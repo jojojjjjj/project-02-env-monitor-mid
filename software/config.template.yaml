@@ -1,0 +1,62 @@
+# config.yaml - 配置模板
+# Configuration Template
+
+# WiFi配置
+wifi:
+  ssid: "Your_WiFi_Name"
+  password: "Your_WiFi_Password"
+  timeout: 10
+
+# MQTT配置
+mqtt:
+  broker: "broker.emqx.io"  # 或 "192.168.1.100"
+  port: 1883
+  client_id: "airbutler_001"
+  username: ""
+  password: ""
+  topic_sensors: "home/airbutler/sensors"
+  topic_commands: "home/airbutler/commands"
+  qos: 0
+
+# InfluxDB配置
+influxdb:
+  url: "http://localhost:8086"
+  token: "your-token-here"
+  org: "airbutler"
+  bucket: "sensors"
+
+# 传感器配置
+sensors:
+  bme680:
+    i2c_address: 0x76
+    temp_offset: 0.0  # 温度校准偏移
+    hum_offset: 0.0   # 湿度校准偏移
+
+  pms5003:
+    uart_id: 2
+    tx_pin: 16
+    baudrate: 9600
+    pm_baseline: 20  # 清洁空气基准
+
+# 系统配置
+system:
+  device_id: "AIR_001"
+  device_name: "AirButler"
+  update_interval: 60  # 秒
+  upload_interval: 60  # 秒
+  log_interval: 300   # 秒
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "airbutler.log"
+  max_size: 1048576  # 1MB
+
+# 告警配置
+alerts:
+  pm25_high: 75
+  pm25_very_high: 115
+  temp_high: 30
+  temp_low: 15
+  hum_high: 70
+  hum_low: 30

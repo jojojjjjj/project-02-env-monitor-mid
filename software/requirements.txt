@@ -1,0 +1,30 @@
+# requirements.txt - Python依赖包
+# Python Dependencies for Server Side
+
+# MQTT客户端
+paho-mqtt==1.6.1
+
+# JSON处理
+ujson==5.7.0
+
+# 环境变量
+python-dotenv==1.0.0
+
+# InfluxDB客户端
+influxdb-client==1.38.0
+
+# 配置管理
+pyyaml==6.0
+
+# 日志
+colorlog==6.7.0
+
+# 时间处理
+python-dateutil==2.8.2
+
+# 数据处理
+pandas==2.0.3
+
+# Web框架(可选)
+flask==2.3.2
+flask-cors==4.0.0
