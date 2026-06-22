@@ -1,254 +1,160 @@
 # 前置知识清单 | Prerequisites Checklist
 
-> 在开始本项目之前，请确认已掌握以下基础知识  
-> Before starting this project, please ensure you have mastered the following basics
+> 在开始本项目之前，请确认以下前置条件已满足。
+> Before starting, please confirm the following prerequisites are met.
+
+本项目采用**复刻模式**，源码由课程提供，因此对编程基础的要求很低——**能读懂基础 C 语法即可**，无需任何 STM32 经验。真正需要你准备好的是**工具链**和**硬件套件**。
 
 ---
 
-## ✅ 必需基础 | Essential Basics
+## ✅ 前置清单 | Prerequisite Checklist
 
-### 1. 数学基础 | Mathematics Fundamentals
+| 项 Item | 要求 Requirement | 说明 Notes |
+|---|---|---|
+| C 语法阅读能力 | 能看懂变量、函数、`while(1)`、`if`、`#define` | **不用会写**，能读懂即可，方便调试时改配置 |
+| STM32 经验 | **无需** | 本课程从零教 CubeIDE 工具链 |
+| 电脑 | 一台带 USB 口的 Windows / Mac / Linux | Windows 最省心（驱动齐全）|
+| 硬件套件 | 见 [hardware/BOM.md](../hardware/BOM.md) | 总成本 < ¥500 |
+| 工具链软件 | 见下方「工具链」 | 全部免费 |
+| WiFi | 一台可联网的 2.4GHz WiFi 路由器 + 账号密码 | ESP8266 仅支持 2.4GHz，不支持 5GHz |
 
-| 主题 | 要求 | 应用场景 |
-|------|------|---------|
-| 基础代数 | 理解变量、方程、函数 | 传感器数据处理 |
-| 百分比与小数 | 计算与单位转换 | 空气质量指数(AQI)计算 |
-| 图表阅读 | 理解坐标轴、曲线、柱状图 | 数据可视化分析 |
-| 基础统计 | 平均值、最大值、最小值 | 环境数据趋势分析 |
-
-**练习资源:**
-- [Khan Academy: Algebra Basics](https://www.khanacademy.org/math/algebra-basics)
-- [可汗学院中文版](https://zh.khanacademy.org/math/algebra-basics)
+> 为什么 ESP8266 只支持 2.4GHz？因为它是一款早期 WiFi 芯片，硬件上就不支持 5GHz 频段。家里路由器若开了「双频合一」，请确认 2.4GHz 频段可用，否则 ESP8266 连不上。
 
 ---
 
-### 2. 电脑操作 | Computer Operations
+## 🛠 工具链 | Toolchain
 
-| 技能 | 说明 | 验证方式 |
-|------|------|---------|
-| 文件管理 | 创建文件夹、复制粘贴文件 | 能独立整理项目文件夹 |
-| 文本编辑 | 使用记事本/VS Code编辑文本 | 能保存并修改.py文件 |
-| 终端命令 | 基本cd、ls、python命令 | 能运行Python脚本 |
-| USB设备 | 能识别驱动安装问题 | ESP32连接后能识别串口 |
+以下软件全部免费。建议在 Day 1 之前全部装好，避免课堂上卡在安装环节。
 
----
+### 1. STM32CubeIDE（主开发环境）
 
-## 📚 建议预习 | Recommended Preparation
+- **版本**：1.6.1+（UP 主原片使用 1.6.1；新版亦可）
+- **用途**：编译、烧录、调试 STM32L433 固件
+- **下载**：[https://www.st.com/en/development-tools/stm32cubeide.html](https://www.st.com/en/development-tools/stm32cubeide.html)
+- **为什么用它**：它是 ST 官方免费 IDE，集成了 CubeMX 图形化配置 + GCC 编译器 + 烧录器，本课程源码工程就是基于它建的。
 
-### 3. Python基础 | Python Fundamentals
+> ⚠️ **CubeIDE 不支持中文路径**。解压源码后，务必把工程复制到**全英文路径**的文件夹再导入，否则会报错。（UP 主 `使用说明.txt` 也特别提醒了这一点。）
 
-**为什么要学Python?**  
-MicroPython是Python 3的精简版，运行在ESP32等微控制器上。掌握Python基础可以让你快速理解IoT设备编程逻辑。
+### 2. STM32CubeProgrammer（烧录工具，可选）
 
-> **Why learn Python?**  
-> MicroPython is a lean implementation of Python 3 that runs on microcontrollers like ESP32. Mastering Python basics enables you to quickly understand IoT device programming logic.
+- **用途**：独立烧录工具，CubeIDE 自带烧录功能不够时备用
+- **下载**：[https://www.st.com/en/development-tools/stm32cubeprogrammer.html](https://www.st.com/en/development-tools/stm32cubeprogrammer.html)
 
-#### 必需概念:
+### 3. 串口驱动（USB 转 TTL）
 
-**① 变量与数据类型 (Variables & Data Types)**
-```python
-# 数值类型
-temperature = 25.5  # 浮点数 - 用于传感器读数
-humidity = 60       # 整数 - 百分比
+STM32L433 开发板通常用 CH340 或 CP210x 芯片做 USB 转串口。插入电脑后若未自动识别，装对应驱动：
 
-# 字符串
-device_name = "AirButler_01"
+- **CH340 驱动**：[https://www.wch.cn/downloads/CH341SER_EXE.html](https://www.wch.cn/downloads/CH341SER_EXE.html)
+- **CP210x 驱动**：[https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers)
 
-# 布尔值
-is_online = True
-```
+> **验证**：插上板子后，Windows「设备管理器 → 端口 (COM 和 LPT)」里应出现一个 `COMx`（如 COM3）。看到 COM 号就说明驱动装好了。
 
-**② 列表与字典 (Lists & Dictionaries)**
-```python
-# 列表 - 存储多个传感器读数
-sensor_values = [25.5, 60, 1013.25]
+### 4. 串口终端软件
 
-# 字典 - 结构化数据
-sensor_data = {
-    "temperature": 25.5,
-    "humidity": 60,
-    "pressure": 1013.25
-}
-```
+用于看 STM32 的 `printf` 调试输出、手动发 AT 命令给 ESP8266。任选其一：
 
-**③ 函数定义 (Functions)**
-```python
-def read_sensor():
-    """读取传感器数据"""
-    return {"temp": 25.5, "hum": 60}
+- **MobaXterm** / **PuTTY**（Windows 经典）
+- **Tera Term**
+- **VS Code + Serial Monitor 插件**
 
-# 调用函数
-data = read_sensor()
-```
+### 5. ESP8266 AT 固件烧录工具（esptool，可选）
 
-**④ 循环与条件 (Loops & Conditions)**
-```python
-# while循环 - 主程序循环
-while True:
-    data = read_sensor()
-    print(data)
-    
-    # if条件 - 异常检测
-    if data["temp"] > 30:
-        print("警告: 温度过高!")
-```
+ESP-01S 一般出厂就带 AT 固件，通常不需要重刷。但若 AT 命令无响应，可能需要重刷：
 
-**练习资源:**
-- [Python官方教程(中文)](https://docs.python.org/zh-cn/3/tutorial/)
-- [MicroPython快速入门](https://docs.micropython.org/en/latest/quickref.html)
+- **esptool**（Python）：`pip install esptool`
+- **ESP8266 Flash Download Tool**（Espressif 官方图形工具）：[https://www.espressif.com/en/support/download/other-tools](https://www.espressif.com/en/support/download/other-tools)
+- **AT 固件**：[Espressif ESP8266 AT 固件](https://docs.espressif.com/projects/esp-at/)
 
----
+### 6. Python（仅用于串口测试脚本，可选）
 
-### 4. 电子学概念 | Electronics Concepts
+`software/tests/` 下有一个用 pyserial 写的串口集成测试。若想跑它：
 
-**为什么需要电子学知识?**  
-理解电压、电流、电阻可以帮你避免烧毁传感器，并解决接线问题。
-
-> **Why need electronics knowledge?**  
-> Understanding voltage, current, and resistance helps prevent damaging sensors and solve wiring issues.
-
-#### 核心概念:
-
-| 概念 | 定义 | 本项目应用 |
-|------|------|-----------|
-| **电压 (Voltage)** | 电势差，单位V (伏特) | ESP32工作在3.3V，接5V会烧毁 |
-| **电流 (Current)** | 电荷流动，单位A (安培) | 传感器耗电量决定电源需求 |
-| **电阻 (Resistance)** | 阻碍电流，单位Ω (欧姆) | I2C总线上拉电阻(4.7kΩ) |
-| **GND** | 接地，电路参考点 | 所有设备必须共地 |
-| **数字信号** | 0/1高低电平 | GPIO引脚输出 |
-| **模拟信号** | 连续电压值 | ADC读取(本项目主要用数字传感器) |
-
-#### 关键安全规则:
-
-⚠️ **永远不要将5V设备连接到ESP32的3.3V引脚**  
-⚠️ **接线前确认电源正负极**  
-⚠️ **不要带电拔插传感器**
-
-**学习资源:**
-- [SparkFun: Electronics概念](https://learn.sparkfun.com/tutorials/voltage-current-resistance-and-ohms-law)
-- [立创EDA: 电子学入门(中文)](https://www.lceda.cn/)
-
----
-
-### 5. 网络基础 | Networking Fundamentals
-
-**为什么IoT需要网络知识?**  
-物联网的本质是"连接"，理解网络协议是数据传输的基础。
-
-> **Why does IoT need networking knowledge?**  
-> The essence of IoT is "connection", understanding network protocols is fundamental to data transmission.
-
-#### 必需概念:
-
-| 概念 | 说明 | 本项目应用 |
-|------|------|-----------|
-| **WiFi** | 无线局域网 | ESP32连接路由器 |
-| **IP地址** | 设备网络标识 | MQTT broker地址(如192.168.1.100) |
-| **端口** | 服务访问通道 | MQTT默认端口1883 |
-| **客户端/服务器** | 网络角色 | ESP32是MQTT客户端 |
-| **发布/订阅** | 消息传递模式 | MQTT核心机制 |
-
-#### MQTT协议简介:
-
-```
-发布者(Publisher) → 主题(Topic) → 订阅者(Subscriber)
-     ESP32           home/airbutler        Grafana
-   (sensor data)      (message bus)      (dashboard)
-```
-
-**学习资源:**
-- [MQTT Essentials](https://www.hivemq.com/mqtt-essentials/)
-- [MQTT中文教程](https://mcxiaoke.gitbooks.io/mqtt-cn/content/)
-
----
-
-### 6. 串口通信 | Serial Communication
-
-**为什么重要?**  
-ESP32通过串口与电脑通信，用于烧录程序和调试输出。
-
-> **Why important?**  
-> ESP32 communicates with the computer via serial port for programming and debugging output.
-
-#### 基本概念:
-
-| 术语 | 说明 |
-|------|------|
-| **波特率 (Baud Rate)** | 数据传输速度，本项目用115200 |
-| **TX/RX** | 发送/接收引脚 |
-| **COM口** | Windows下串口设备名称(COM3, COM4等) |
-| **PuTTY/Thonny** | 串口终端软件 |
-
-**调试示例:**
-```
-ESP32输出 → 串口 → USB → 电脑 → PuTTY显示
-"Temperature: 25.5°C"
+```bash
+pip install pyserial
 ```
 
 ---
 
-## 🎯 自我评估 | Self-Assessment
+## 🧰 硬件套件 | Hardware Kit
 
-完成以下检查题，评估准备情况:
+完整清单与购买参考见 [hardware/BOM.md](../hardware/BOM.md)。核心组件：
 
-### Python基础测试
+- STM32L433 开发板（KE1 板或通用 STM32L433 最小系统板）
+- ESP-01S（ESP8266）WiFi 模块
+- SHT31 温湿度传感器模块
+- SSD1306 OLED 0.96" 128×64（I2C）
+- 无源蜂鸣器（可选）
+- 轻触按键 ×2（可选）
+- 面包板 + 杜邦线（MVP 版）/ 自制 PCB（进阶版）
+- USB 数据线
 
-```python
-# 1. 创建一个存储温度数据的列表
-temperatures = [22.5, 23.0, 24.5]
-
-# 2. 计算平均温度
-avg_temp = sum(temperatures) / len(temperatures)
-print(f"平均温度: {avg_temp}")
-
-# 3. 创建函数判断温度是否过高
-def is_too_hot(temp):
-    return temp > 30
-
-# 4. 循环检测
-for temp in temperatures:
-    if is_too_hot(temp):
-        print("警告!")
-```
-
-### 电子学测试
-
-- [ ] 我知道3.3V和5V的区别
-- [ ] 我明白GND是什么
-- [ ] 我能看懂简单的接线图
-
-### 网络测试
-
-- [ ] 我知道自家WiFi的名称和密码
-- [ ] 我理解IP地址的作用
-- [ ] 我知道什么是客户端和服务器
+> 总成本 < ¥500/套。面包板 MVP 版通常 ¥150–250 即可搞定。
 
 ---
 
-## 📖 预习时间建议 | Recommended Study Time
+## 📦 软件安装步骤 | Software Installation Steps
 
-| 主题 | 预计时间 | 优先级 |
-|------|---------|-------|
-| Python基础 | 4-6小时 | ⭐⭐⭐ |
-| 电子学概念 | 2-3小时 | ⭐⭐ |
-| 网络基础 | 2-3小时 | ⭐⭐ |
-| **总计** | **8-12小时** | |
+按顺序安装，每步装完都验证一下：
 
-**建议预习顺序:** Python → 电子学 → 网络
+1. **装 CubeIDE**
+   - 下载 ST 账号登录后下载安装包，按默认选项安装。
+   - 验证：启动 CubeIDE，能新建工程即成功。
+
+2. **装串口驱动**
+   - 插上 STM32 板子，装 CH340 或 CP210x 驱动。
+   - 验证：设备管理器出现 `COMx`。
+
+3. **装串口终端**
+   - 装 MobaXterm 或 PuTTY。
+   - 验证：能打开串口（波特率 115200）连上板子。
+
+4. **（可选）装 esptool + pyserial**
+   ```bash
+   pip install esptool pyserial
+   ```
+   - 验证：`esptool.py version` 能打印版本号。
+
+5. **解压课程源码到英文路径**
+   - 把 `software/src/` 工程解压到如 `D:\projects\env-clock\`（**不要有中文**）。
+   - 用 CubeIDE `File → Open Projects from File System` 导入。
+
+---
+
+## 🧪 自我评估 | Self-Assessment
+
+开始前，确认以下都打勾：
+
+- [ ] 我有一台带 USB 口的电脑
+- [ ] 我知道自家 WiFi 的名称和密码，且是 2.4GHz
+- [ ] 我能看懂下面这段 C 代码大概在干什么（不用会写）：
+  ```c
+  while (1) {
+      KE1_I2C_SHT31(&temp, &humi);   // 读温湿度
+      OLED_ShowT_H(temp, humi);       // 显示
+      HAL_Delay(1000);                // 等 1 秒
+  }
+  ```
+- [ ] 我装好了 CubeIDE，能新建工程
+- [ ] 我插上板子，设备管理器出现了 COM 号
+
+全部打勾？去 [day-01.md](day-01.md) 开始吧。
 
 ---
 
 ## ❓ 常见问题 | FAQ
 
-**Q1: 我完全没编程经验，能参加吗?**  
-A: 可以! 项目从零开始，前3天会有Python基础教学。
+**Q1: 完全没碰过单片机，能跟上吗？**
+A: 可以。本项目就是为零基础设计，源码提供，你学的是工具链与调试，不是从零编程。
 
-**Q2: 需要购买额外的学习材料吗?**  
-A: 不需要，所有学习资源都在线免费提供。
+**Q2: 需要会 C 语言吗？**
+A: 只需**读懂**基础 C 语法（变量、函数、循环、判断），不用会写。Day 1 会带大家过一遍源码结构。
 
-**Q3: 预习不来得及怎么办?**  
-A: 不用担心，课程设计包含"补课环节"，关键概念会在项目中反复讲解。
+**Q3: Mac / Linux 能用吗？**
+A: 能，CubeIDE 是跨平台的。但串口驱动和烧录工具在 Windows 上最省心，建议用 Windows。
+
+**Q4: 家里只有 5GHz WiFi 怎么办？**
+A: ESP8266 只支持 2.4GHz。大多数路由器都支持双频，在设置里开启 2.4GHz 频段即可；或用手机开热点（手机热点默认 2.4GHz）。
 
 ---
 
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+*最后更新: 2026-06-22 | Last updated: 2026-06-22*

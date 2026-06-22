@@ -1,579 +1,276 @@
-# Day 6: WiFi连接与网络基础 | WiFi Connection & Networking Basics
+# Day 6: WiFi 联网 + SNTP 网络授时 —— 获取网络时间 | WiFi + SNTP Time Sync
 
-> **今日目标 (Today's Goals):**
-> - 理解WiFi连接原理和网络基础
-> - 实现ESP32自动连接WiFi
-> - 学习网络调试和错误处理
-> - 完成第一周项目检查点
->
-> **产出 (Deliverable):** 能稳定连接WiFi的ESP32系统
+> **学习目标 | Learning Objectives**
+> - 理解 NTP/SNTP 协议：网络对时的原理、时区、UTC
+> - 用 ESP8266 AT 命令配 SNTP，向 NTP 服务器获取当前时间
+> - 解析 ESP8266 返回的时间字符串（`+CIPSNTPTIME:`），转换成北京时间
+> - 把网络时间显示到 OLED，验证它和手机时间一致
 
----
-
-## 🕒 时间安排 | Schedule
-
-| 时间 | 活动类型 | 内容 |
-|------|---------|------|
-| 9:00-10:30 | 讲座 | WiFi原理与网络基础 |
-| 10:45-12:00 | 实践 | WiFi连接实现 |
-| 13:30-15:00 | 实践 | 网络测试与调试 |
-| 15:15-16:30 | 练习 | 第一周项目整合 |
-| 16:30-17:00 | 总结 | Week 1检查与Q&A |
+> **产出 | Deliverable**: OLED 显示从网络同步的北京时间 `2026-06-22 14:30:05`，和手机时间对得上
 
 ---
 
-## 📖 上午: WiFi与网络基础 | Morning: WiFi & Networking
+## 一、前置检查 | Pre-flight Checklist
 
-### 为什么要学网络连接? | Why Learn Networking?
+- [ ] Day 5 的 ESP8266 已连上 WiFi（`WIFI GOT IP`）
+- [ ] 你的 WiFi 能访问公网（NTP 服务器在公网上，校园网/公司内网可能封 UDP 123）
+- [ ] 固件版本记下来了（Day 5 的 `AT+GMR`）——SNTP 命令语法随版本略有差异
 
-**IoT的核心价值在于连接:**
+---
+
+## 二、NTP/SNTP 原理 —— 网络怎么对时 | NTP/SNTP: How the Network Syncs Time
+
+### 2.1 为什么需要网络授时
+
+普通 RTC（实时时钟）芯片靠 32.768kHz 晶振计时，一天可能慢/快 1-2 秒，一年累积几分钟误差。**NTP (Network Time Protocol)** 让设备向互联网上的时间服务器「对表」，精度可达几十毫秒。
+
+**SNTP** (Simple NTP) 是 NTP 的简化版，够嵌入式用。ESP8266 AT 固件内置了 SNTP 客户端——你只要告诉它用哪个 NTP 服务器、哪个时区，它自动对时。
+
+> **WHY SNTP over a hardware RTC?** 选项 A：加一颗 DS3231 RTC 芯片（¥8），精度高但要硬件、要 I2C、要电池保持走时。选项 B：用现成的 ESP8266 联网 SNTP 对时，零额外硬件、永远准——只要联网。UP主 选 B，这正是「网络时钟」的精髓。代价：断网就没法对时（Day 8 解决断网回退）。
+
+### 2.2 UTC、时区、北京时间
+
+- **UTC** (Coordinated Universal Time)：世界协调时，全球时间基准（≈格林威治时间）
+- **时区**：地球分 24 个时区，每个相差 1 小时。北京在东八区，**北京时间 = UTC + 8**
+- NTP 服务器返回的是 **UTC 时间**，ESP8266 根据你设的时区自动加偏移
+
+常用 NTP 服务器：
+- `ntp.aliyun.com`（阿里云，国内快）
+- `cn.ntp.org.cn`（国家授时中心）
+- `pool.ntp.org`（全球池，但国内可能慢）
+
+> **WHY a China NTP server?** `pool.ntp.org` 会 DNS 解析到最近的服务器，但国内解析可能不准、慢。用 `ntp.aliyun.com` 国内延迟 <50ms，稳定。这是真实工程选型——不是技术能跑就行，要在你的部署环境跑得稳。
+
+### 2.3 ESP8266 SNTP 的 AT 命令序列
+
+乐鑫 AT 固件的 SNTP 流程（V2.x 固件）：
+
 ```
-无连接设备          IoT设备
-温度传感器    →    云端分析    →    智能控制
-(只能本地读)        (远程访问)      (自动化)
+AT+CIPSNTPCFG=1,8,"ntp.aliyun.com"   // 开 SNTP，时区 8，用阿里 NTP
+        → OK
+AT+CIPSNTPTIME?                        // 查当前时间
+        → +CIPSNTPTIME:Mon Jun 22 14:30:05 2026
+          OK
 ```
 
-**真实应用场景:**
-- 远程监控家中空气质量
-- 多设备数据汇聚分析
-- 云端AI处理传感器数据
-- 自动化控制(如空气差自动开净化器)
+- `CIPSNTPCFG=1,8,...`：参数 1=启用 SNTP，8=时区（东八区），后面是 NTP 服务器（可填 3 个）
+- `CIPSNTPTIME?`：返回已经换算好时区的本地时间字符串
 
-> **IoT's Core Value is Connection:**  
-> Networking transforms local sensors into cloud-connected smart devices
+> ⚠️ **固件版本差异**: 老版 AT 固件 (V1.x) 用 `AT+CIPSNTPCFG` 语法略不同，或没有内置 SNTP。如果这条命令报 `ERROR`，先 `AT+GMR` 查版本，去乐鑫官网查对应版本的 SNTP 命令。本项目假设 V2.x。
 
 ---
 
-### 任务6.1: 网络基础概念 (30分钟)
+## 三、配置 SNTP 并获取时间 | Configuring SNTP and Getting Time
 
-**核心概念:**
+### 3.1 连 WiFi 后配 SNTP
 
-| 概念 | 说明 | 示例 |
+在 `main.c` 里，连 WiFi 成功后（Day 5 的 `ConnectWiFi` 返回 1）追加：
+
+```c
+/* USER CODE BEGIN 2 */
+// ... Day 5 的 ConnectWiFi ...
+
+HAL_Delay(1000);
+// 配 SNTP：启用，时区 8（北京时间），NTP 服务器
+UART_Put_AT_Cmd("AT+CIPSNTPCFG=1,8,\"ntp.aliyun.com\"\r\n");
+UART_Get_AT_Resp(resp, sizeof(resp)-1, 2000);
+printf("SNTP cfg: %s\r\n", resp);
+
+HAL_Delay(2000);  // 给 SNTP 几秒去对时
+printf("Requesting time...\r\n");
+/* USER CODE END 2 */
+```
+
+### 3.2 解析时间字符串
+
+ESP8266 返回的时间格式（V2.x）：
+
+```
++CIPSNTPTIME:Mon Jun 22 14:30:05 2026
+```
+
+这是英文星期 + 月 + 日 + 时分秒 + 年。我们需要把它解析成结构化的 `年/月/日/时/分/秒`。**复刻模式**：解析函数已提供在 `software/src/clock.c`，你照用：
+
+```c
+// clock.c 提供的解析函数
+typedef struct {
+    int year, month, day, hour, min, sec;
+} ClockTime;
+
+int Clock_ParseFromAT(const char *atResp, ClockTime *out);
+// 成功返回 1，失败返回 0
+```
+
+解析思路（讲 WHY 用 `sscanf`）：
+
+```c
+// ESP 返回: "+CIPSNTPTIME:Mon Jun 22 14:30:05 2026"
+// 用 sscanf 提取
+char mon[4] = {0};
+int day, hh, mm, ss, year;
+if (sscanf(atResp, "+CIPSNTPTIME:%3s %3s %d %d:%d:%d %d",
+           weekday, mon, &day, &hh, &mm, &ss, &year) == 7) {
+    // 月份是英文缩写，要转成数字
+    out->month = month_str_to_num(mon);  // "Jun"->6
+    out->day = day; out->hour = hh; out->min = mm; out->sec = ss; out->year = year;
+    return 1;
+}
+```
+
+> **WHY `sscanf` not strtok?** `sscanf` 一行匹配固定格式，比 `strtok` 切分简单不易错。但 `sscanf` 占代码空间较大（~6KB），L433 的 256KB Flash 够用。如果 Flash 紧张再改手写解析。
+
+### 3.3 主循环定期对时 + 显示
+
+```c
+/* USER CODE BEGIN WHILE */
+ClockTime now = {0};
+uint32_t lastSync = 0;
+float t = 0, h = 0;
+
+while (1)
+{
+    // 每 30 分钟重新对时一次（平时靠本地 tick 累加）
+    if (HAL_GetTick() - lastSync > 30*60*1000 || lastSync == 0) {
+        UART_Put_AT_Cmd("AT+CIPSNTPTIME?\r\n");
+        int n = UART_Get_AT_Resp(resp, sizeof(resp)-1, 2000);
+        resp[n] = 0;
+        if (Clock_ParseFromAT((char*)resp, &now)) {
+            printf("Synced: %04d-%02d-%02d %02d:%02d:%02d\r\n",
+                   now.year, now.month, now.day, now.hour, now.min, now.sec);
+            lastSync = HAL_GetTick();
+        }
+    }
+
+    // 本地秒级 tick（用 HAL_Delay 简化）
+    Clock_Tick(&now);  // 秒+1，自动进位分时日月
+
+    // 读温湿度 + 显示
+    if (KE1_I2C_SHT31(&t, &h) == HAL_OK) {
+        OLED_ShowClock(&now);    // 显示时间（第一行）
+        OLED_ShowT_H(t, h);      // 显示温湿度（第三行）
+    }
+    HAL_Delay(1000);
+    /* USER CODE END WHILE */
+}
+```
+
+> **WHY sync every 30 min not every second?** 每次 `CIPSNTPTIME?` 要走一次网络往返，几百毫秒，还占串口。对时一次后，STM32 自己用 `HAL_GetTick()` 维护秒级计数就够准（L433 内部 RTC 短期精度够 30 分钟）。每 30 分钟重新对一次，校正累积漂移。这是真实系统的「同步 + 本地维护」模式。
+
+### 3.4 编译烧录，验证
+
+OLED 应该显示：
+
+```
+14:30:05         （第一行，时间）
+2026-06-22       （第二行，日期）
+温湿度
+25.43'C 58.20%   （第三行）
+```
+
+**和手机时间对比**——应该一致（误差 <2 秒）。如果不准，检查时区是不是设成了 8。
+
+> ✅ **检查点 6.1**: OLED 时间和手机时间一致，过 1 分钟秒数在涨。
+
+---
+
+## 四、时间本地维护 —— Clock 模块 | Local Time Keeping: The Clock Module
+
+### 4.1 为什么需要本地 tick
+
+SNTP 对时是「瞬间」事件，但时钟要每秒走。两种做法：
+
+| 做法 | 说明 | 缺点 |
 |------|------|------|
-| **SSID** | WiFi网络名称 | "Home_WiFi_5G" |
-| **密码** | WiFi安全密钥 | "password123" |
-| **IP地址** | 设备在网络中的标识 | 192.168.1.100 |
-| **子网掩码** | 网络范围标识 | 255.255.255.0 |
-| **网关** | 连接到外网的出口 | 192.168.1.1 |
-| **DNS** | 域名解析服务器 | 8.8.8.8 |
-| **MAC地址** | 设备硬件唯一ID | AA:BB:CC:DD:EE:FF |
+| **每秒查 NTP** | 简单 | 网络往返几百 ms，OLED 卡顿；频繁请求 NTP 服务器会被 ban |
+| **对时一次 + 本地 tick** | 对时后用 `HAL_GetTick()` 本地维护秒计数 | 30 分钟内可能漂移 1-2 秒，定期重对时即可 |
 
-**IP地址分类:**
-```
-局域网IP (私有):
-- 192.168.x.x (最常见)
-- 10.x.x.x
-- 172.16-31.x.x
+我们用第二种。`clock.c` 的 `Clock_Tick` 函数：
 
-公网IP (全球唯一):
-- 由ISP分配
-- 用于互联网访问
-
-本机回环:
-- 127.0.0.1 (指自己)
+```c
+void Clock_Tick(ClockTime *c) {
+    if (++c->sec >= 60) { c->sec = 0; if (++c->min >= 60) { c->min = 0;
+        if (++c->hour >= 24) { c->hour = 0; /* 日期进位，省略 */ } } }
+}
 ```
 
-**为什么需要DHCP?**  
-自动分配IP地址，避免手动配置冲突。
+> **WHY not use STM32's hardware RTC?** L433 其实有硬件 RTC 外设，配个纽扣电池能断电走时。但本项目复刻视频，视频没用 RTC（用 SNTP+软件 tick），我们照搬。如果你想加 RTC 作为扩展，是很好的 Day 10 优化方向。
 
-> **Why need DHCP?**  
-> Automatically assigns IP addresses to avoid manual configuration conflicts
+### 4.2 闰年和月份天数（讲 WHY）
+
+日期进位要处理闰年和各月天数：
+
+```c
+static const uint8_t days_in_month[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+int is_leap(int y) { return (y%4==0 && y%100!=0) || (y%400==0); }
+// 2 月：闰年 29 天，平年 28 天
+```
+
+> **WHY care about leap years?** 2 月 28 日 23:59:59 过 1 秒，如果不是闰年应该到 3 月 1 日 00:00:00，闰年应该到 2 月 29 日 00:00:00。算错会让日期跳一天。`Clock_Tick` 里日期进位必须考虑这个。虽然时钟大多时候在月内走，但跨月跨年那一刻算错就很丑。
 
 ---
 
-### 任务6.2: WiFi连接流程 (30分钟)
+## 五、常见错误 | Common Errors
 
-**ESP32 WiFi架构:**
-```
-ESP32 WiFi子系统
-├── Station Mode (STA)    ← 连接到路由器(本项目用)
-├── AP Mode               ← 作为热点
-└── AP+STA Mode           ← 同时连接和创建热点
-```
-
-**连接流程:**
-```
-1. 设置WiFi为Station模式
-   ↓
-2. 配置网络信息(SSID/密码)
-   ↓
-3. 开始连接
-   ↓
-4. 等待连接成功
-   ↓
-5. 获取IP地址
-   ↓
-6. 连接完成
-```
-
-**状态码:**
-```python
-# WiFi连接状态
-STAT_IDLE = 1000      # 空闲
-STAT_CONNECTING = 1001 # 连接中
-STAT_GOT_IP = 1010    # 获得IP(成功)
-STAT_NO_AP_FOUND = 201 # 找不到AP
-STAT_WRONG_PASS = 202  # 密码错误
-STAT_CONNECT_FAIL = 203 # 连接失败
-```
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| `CIPSNTPCFG` 报 `ERROR` | 固件版本不支持 / 没连上 WiFi | `AT+GMR` 查版本；确认先 `CWJAP` 连上网再配 SNTP |
+| `CIPSNTPTIME` 返回 `1970-01-01` | SNTP 还没对上时 | 配完 SNTP 后 `HAL_Delay(3000)` 再查；检查 NTP 服务器域名 |
+| 时间对，但差 8 小时 | 时区没设或设错 | `CIPSNTPCFG=1,8,...` 第 2 参数必须是 `8`（北京） |
+| 时间是 UTC（差 8 小时） | 时区设成 0 了 | 改成 8 |
+| 月份显示成 `6` 但应是 `Jun` | 解析没转月份缩写 | `Clock_ParseFromAT` 里有 `month_str_to_num`，确认调了 |
+| 秒数不动 | `Clock_Tick` 没被调用 / `HAL_Delay` 卡死 | 确认主循环里 `Clock_Tick(&now)` 在 `HAL_Delay(1000)` 前 |
+| 跨 0 点日期不进位 | 日期进位逻辑漏了 | 检查 `Clock_Tick` 的 hour>=24 分支里有没有处理 day++ |
+| 频繁对时被 NTP 服务器拒 | 1 秒查一次太频繁 | 改成 30 分钟一次 |
 
 ---
 
-## 💻 下午: WiFi实践 | Afternoon: WiFi Practice
+## 六、调试技巧 | Debugging Tips
 
-### 任务6.3: WiFi连接实现 (60分钟)
+1. **先串口看原始响应**: `printf("RAW: %s\r\n", resp)` 把 ESP8266 原始返回打出来，确认格式，再写解析。
+2. **手动验证解析**: 把一条真实响应字符串硬编码进测试代码，单独调 `Clock_ParseFromAT`，解析对了再接真实数据。
+3. **时区一次性验证**: 故意把时区设 0（UTC），看时间是不是比北京少 8 小时——验证时区参数真生效。
+4. **NTP 服务器备用**: `ntp.aliyun.com` 不通？换 `cn.ntp.org.cn` 或 `time.windows.com`。`CIPSNTPCFG` 支持填 3 个服务器：`=1,8,"s1","s2","s3"`。
+5. **SNTP 对时失败排查链**: ① WiFi 连上了吗 (`CIFSR` 有 IP) → ② 能 ping 通 NTP 服务器吗 (`AT+PING="ntp.aliyun.com"`) → ③ SNTP 配了吗 (`CIPSNTPCFG?` 查) → ④ 等够时间了吗 (至少 2 秒)。
 
-**步骤:**
+---
 
-1. **扫描可用网络**
-   ```python
-   import network
-   import time
+## 七、今日检查点 | Day 6 Checkpoints
 
-   # 创建WLAN对象(Station模式)
-   wlan = network.WLAN(network.STA_IF)
-   wlan.active(True)
+- [ ] `AT+CIPSNTPCFG=1,8,"ntp.aliyun.com"` 返回 `OK`
+- [ ] `AT+CIPSNTPTIME?` 返回合理的北京时间
+- [ ] OLED 显示网络时间，和手机一致（误差 <2 秒）
+- [ ] 秒数每秒在涨，跨分钟正确进位
+- [ ] 能解释「为什么 30 分钟对时一次而不是每秒」
+- [ ] 截图：OLED 时间 + 手机时间同框对比
 
-   # 扫描网络
-   print("扫描WiFi网络...")
-   networks = wlan.scan()
+---
 
-   print(f"找到 {len(networks)} 个网络:")
-   for net in networks:
-       ssid = net[0].decode('utf-8')
-       rssi = net[3]  # 信号强度
-       print(f"  {ssid} - 信号: {rssi} dBm")
-   ```
+## 八、今日作业 | Homework
 
-2. **连接WiFi**
-   ```python
-   def connect_wifi(ssid, password, timeout=10):
-       """连接WiFi"""
-       wlan = network.WLAN(network.STA_IF)
-       wlan.active(True)
-       
-       # 断开旧连接
-       wlan.disconnect()
-       
-       # 连接新网络
-       print(f"连接到 {ssid}...")
-       wlan.connect(ssid, password)
-       
-       # 等待连接
-       start_time = time.time()
-       while not wlan.isconnected():
-           if time.time() - start_time > timeout:
-               print("连接超时!")
-               return False
-           time.sleep(0.5)
-           print(".", end="")
-       
-       print("\n连接成功!")
-       
-       # 打印网络信息
-       print(f"IP地址: {wlan.ifconfig()[0]}")
-       print(f"子网掩码: {wlan.ifconfig()[1]}")
-       print(f"网关: {wlan.ifconfig()[2]}")
-       print(f"DNS: {wlan.ifconfig()[3]}")
-       
-       return True
-
-   # 使用
-   connect_wifi("Your_WiFi_Name", "Your_Password")
-   ```
-
-3. **自动重连机制**
-   ```python
-   class WiFiManager:
-       """WiFi管理器 - 处理连接和重连"""
-       
-       def __init__(self, ssid, password):
-           self.ssid = ssid
-           self.password = password
-           self.wlan = network.WLAN(network.STA_IF)
-           self.wlan.active(True)
-           self.connected = False
-           self.last_check = 0
-           self.check_interval = 30  # 30秒检查一次
-       
-       def connect(self, timeout=10):
-           """连接WiFi"""
-           print(f"连接到 {self.ssid}...")
-           self.wlan.connect(self.ssid, self.password)
-           
-           start_time = time.time()
-           while not self.wlan.isconnected():
-               if time.time() - start_time > timeout:
-                   print("连接失败!")
-                   self.connected = False
-                   return False
-               time.sleep(0.5)
-           
-           print("连接成功!")
-           print(f"IP: {self.wlan.ifconfig()[0]}")
-           self.connected = True
-           return True
-       
-       def check_connection(self):
-           """检查连接状态，自动重连"""
-           now = time.time()
-           
-           # 定时检查
-           if now - self.last_check > self.check_interval:
-               self.last_check = now
-               
-               if not self.wlan.isconnected():
-                   print("连接断开，尝试重连...")
-                   self.connected = False
-                   self.connect()
-       
-       def is_connected(self):
-           """是否已连接"""
-           return self.wlan.isconnected()
-       
-       def get_ip(self):
-           """获取IP地址"""
-           if self.wlan.isconnected():
-               return self.wlan.ifconfig()[0]
-           return None
-
-   # 使用
-   wifi = WiFiManager("Your_WiFi", "password")
-   wifi.connect()
+1. **日期显示**: 在时间下方一行显示 `2026-06-22` 日期。
+2. **星期显示**: 解析 ESP 返回的星期 (Mon/Tue/...)，在 OLED 角落显示中文或英文星期。
+3. **对时失败处理**: 如果连续 3 次 `CIPSNTPTIME` 返回 `1970` 年，OLED 显示「NTP FAIL」并每 10 秒重试。
+4. **回答**:
+   - NTP 服务器返回的是 UTC 还是本地时间？北京时间怎么换算？
+   - 为什么不每秒都查 NTP？
+   - 闰年的判断规则是什么？2100 年是闰年吗？
+5. **Git 提交**:
+   ```bash
+   git add curriculum/day-06.md
+   git commit -m "day06: SNTP time sync, network clock on OLED"
    ```
 
 ---
 
-### 任务6.4: 网络测试 (30分钟)
+## 九、明日预告 | Tomorrow
 
-**1. Ping测试(如果可用):**
-```python
-def ping_test(host="8.8.8.8", count=4):
-    """简单的Ping测试"""
-    print(f"Ping {host}...")
-    
-    success = 0
-    for i in range(count):
-        # MicroPython没有原生ping，使用socket连接测试
-        try:
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            sock.connect((host, 80))  # 尝试连接HTTP端口
-            sock.close()
-            success += 1
-            print(f"  包 {i+1}: 成功")
-        except:
-            print(f"  包 {i+1}: 超时")
-    
-    print(f"成功率: {success}/{count}")
-```
+**Day 7: 时钟整合 —— 时间 + 温湿度 + 定时刷新**
+- 把时间、温湿度、日期整合成一个完整的桌面时钟界面
+- 设计 OLED 显示布局（时间大字号 + 温湿度小字号）
+- 实现定时刷新策略，避免闪屏
 
-**2. HTTP请求测试:**
-```python
-def http_get(url):
-    """简单的HTTP GET请求"""
-    import socket
-    
-    try:
-        # 解析URL
-        if "://" in url:
-            url = url.split("://")[1]
-        
-        host, path = url.split("/", 1) if "/" in url else (url, "")
-        path = "/" + path
-        
-        # 创建socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5)
-        
-        # 连接服务器
-        print(f"连接 {host}...")
-        sock.connect((host, 80))
-        
-        # 发送HTTP请求
-        request = f"GET {path} HTTP/1.1\r\nHost: {host}\r\n\r\n"
-        sock.send(request.encode())
-        
-        # 接收响应
-        response = sock.recv(1024)
-        sock.close()
-        
-        print(response.decode())
-        return True
-    
-    except Exception as e:
-        print(f"请求失败: {e}")
-        return False
-
-# 测试
-http_get("example.com/")
-```
-
-**3. NTP时间同步:**
-```python
-def get_ntp_time():
-    """获取NTP网络时间"""
-    import socket
-    import struct
-    
-    NTP_HOST = "ntp.aliyun.com"  # 阿里云NTP服务器
-    NTP_PORT = 123
-    
-    try:
-        # 创建UDP socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(5)
-        
-        # NTP请求包(48字节)
-        NTP_PACKET = b'\x1b' + 47 * b'\0'
-        
-        # 发送请求
-        sock.sendto(NTP_PACKET, (NTP_HOST, NTP_PORT))
-        
-        # 接收响应
-        data, _ = sock.recvfrom(48)
-        sock.close()
-        
-        # 解析时间(从第40字节开始)
-        timestamp = struct.unpack("!I", data[40:44])[0]
-        
-        # NTP时间戳转换(Unix时间戳)
-        ntp_time = timestamp - 2208988800
-        
-        # 设置RTC
-        import machine
-        rtc = machine.RTC()
-        rtc.datetime(time.gmtime(ntp_time))
-        
-        print(f"时间已同步: {time.gmtime(ntp_time)}")
-        return ntp_time
-    
-    except Exception as e:
-        print(f"NTP同步失败: {e}")
-        return None
-
-# 使用
-get_ntp_time()
-```
+**前置准备**: Day 6 的时间显示跑通；想好你想要的时钟界面布局。
 
 ---
 
-## 📝 第一周检查 | Week 1 Checkpoint
-
-### 任务6.5: 项目整合 (60分钟)
-
-**整合第一周所有功能:**
-
-```python
-# main.py - 完整的环境监测站(本地版)
-from machine import Pin, I2C
-import bme680
-import ssd1306
-import time
-import ujson
-
-# 导入之前的类
-# (实际项目中这些应该在单独文件中)
-from sensor_manager import SensorManager
-from data_logger import DataLogger
-from wifi_manager import WiFiManager
-
-class AirButler:
-    """空气管家 - 主控制类"""
-    
-    def __init__(self, wifi_ssid, wifi_pass):
-        print("=" * 50)
-        print("  空气管家 Environmental Monitor")
-        print("  版本: 1.0 (本地版)")
-        print("=" * 50)
-        
-        # 初始化WiFi
-        self.wifi = WiFiManager(wifi_ssid, wifi_pass)
-        
-        # 初始化传感器
-        print("\n初始化传感器...")
-        self.sensor_manager = SensorManager()
-        
-        # 初始化OLED
-        self.i2c = I2C(0, scl=Pin(22), sda=Pin(21))
-        self.oled = ssd1306.SSD1306_I2C(128, 64, self.i2c)
-        
-        # 初始化数据记录器
-        self.logger = DataLogger()
-        
-        # 统计分析
-        self.temp_readings = []
-        self.pm_readings = []
-        
-        # 显示启动画面
-        self._show_splash()
-    
-    def _show_splash(self):
-        """显示启动画面"""
-        self.oled.fill(0)
-        self.oled.text("AIR BUTLER", 30, 10)
-        self.oled.text("Starting...", 30, 30)
-        self.oled.show()
-        time.sleep(2)
-    
-    def update_display(self, reading):
-        """更新OLED显示"""
-        self.oled.fill(0)
-        
-        # 标题
-        self.oled.text("AIR BUTLER", 30, 0)
-        
-        # 传感器数据
-        if reading.temperature:
-            self.oled.text(f"T:{reading.temperature:5.1f}C", 0, 12)
-        
-        if reading.humidity:
-            self.oled.text(f"H:{reading.humidity:5.1f}%", 64, 12)
-        
-        if reading.pm25:
-            self.oled.text(f"PM2.5:{reading.pm25:3d}", 0, 24)
-        
-        # WiFi状态
-        if self.wifi.is_connected():
-            self.oled.text("WiFi:ON ", 0, 56)
-        else:
-            self.oled.text("WiFi:OFF", 0, 56)
-        
-        # 记录数
-        self.oled.text(f"LOG:{len(self.temp_readings)}", 70, 56)
-        
-        self.oled.show()
-    
-    def run(self):
-        """主循环"""
-        print("\n主程序启动...")
-        
-        last_log_time = 0
-        log_interval = 300  # 5分钟记录一次
-        
-        while True:
-            try:
-                # 检查WiFi
-                self.wifi.check_connection()
-                
-                # 读取传感器
-                reading = self.sensor_manager.read_all()
-                
-                if reading.valid:
-                    # 更新显示
-                    self.update_display(reading)
-                    
-                    # 记录数据
-                    now = time.time()
-                    if now - last_log_time > log_interval:
-                        self.logger.log(reading)
-                        
-                        # 更新统计
-                        if reading.temperature:
-                            self.temp_readings.append(reading.temperature)
-                        if reading.pm25:
-                            self.pm_readings.append(reading.pm25)
-                        
-                        # 限制统计数组大小
-                        if len(self.temp_readings) > 100:
-                            self.temp_readings.pop(0)
-                        if len(self.pm_readings) > 100:
-                            self.pm_readings.pop(0)
-                        
-                        last_log_time = now
-                        print(f"已记录数据 ({len(self.temp_readings)}条)")
-                
-                time.sleep(1)
-            
-            except Exception as e:
-                print(f"错误: {e}")
-                time.sleep(5)
-
-# 主程序
-if __name__ == "__main__":
-    # 配置WiFi
-    WIFI_SSID = "Your_WiFi_Name"
-    WIFI_PASS = "Your_Password"
-    
-    # 创建并运行
-    app = AirButler(WIFI_SSID, WIFI_PASS)
-    app.run()
-```
-
----
-
-## 📝 今日作业 | Today's Assignment
-
-### 基础作业 (必做)
-
-1. **WiFi连接测试**  
-   - 测试在不同位置的连接质量
-   - 记录信号强度和连接成功率
-   - 分析影响连接的因素
-
-2. **完整系统演示**  
-   拍摄视频展示:
-   - 系统启动过程
-   - 传感器数据读取
-   - OLED显示更新
-   - WiFi连接状态
-
-3. **Week 1检查报告**  
-   提交包含:
-   - 已完成功能清单
-   - 遇到的问题和解决方案
-   - 系统当前状态
-   - Week 2目标
-
-### 进阶作业 (选做)
-
-1. 实现: WiFi信号强度指示器(在OLED上显示)
-2. 研究: 如何加密传输WiFi密码?
-3. 思考: 如何在多个WiFi之间自动切换?
-
----
-
-## 📚 参考资源 | References
-
-- [ESP32 WiFi编程指南](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_wifi.html)
-- [MicroPython网络文档](https://docs.micropython.org/en/latest/esp32/quickref.html#networking)
-- [TCP/IP协议详解](https://www.tcpipguide.com/)
-
----
-
-## 🔮 明日预告 | Tomorrow's Preview
-
-**Day 7: MQTT协议与数据上传**
-
-- 学习MQTT发布/订阅模型
-- 实现ESP32 MQTT客户端
-- 上传传感器数据到云端
-- 实现远程监控基础
-
-**前置准备:**
-- 确保WiFi连接稳定
-- 了解什么是"消息代理"
-
----
-
-## 🎯 第一周总结 | Week 1 Summary
-
-### 已完成技能:
-- [x] ESP32开发环境搭建
-- [x] MicroPython基础编程
-- [x] I2C/UART通信协议
-- [x] 多传感器整合
-- [x] OLED显示驱动
-- [x] 本地数据记录
-- [x] WiFi网络连接
-
-### 下周目标:
-- [ ] MQTT物联网协议
-- [ ] 服务器端搭建
-- [ ] 数据可视化仪表盘
-- [ ] 完整IoT系统
-
----
-
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+*最后更新: 2026-06 | Last updated: 2026-06*

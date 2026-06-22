@@ -1,331 +1,292 @@
-# Day 1: 项目启动与ESP32入门 | Project Launch & ESP32 Basics
+# Day 1: 项目导览 + 认识 STM32L433 (KE1 板) + 工具链安装 | Project Tour + Meet the STM32L433 (KE1 Board) + Toolchain
 
-> **今日目标 (Today's Goals):**
-> - 理解项目整体架构和应用场景
-> - 认识所有硬件组件及其功能
-> - 完成ESP32开发环境搭建
-> - 编写第一个MicroPython程序(LED闪烁)
+> **学习目标 | Learning Objectives**
+> - 理解我们要复刻的「WiFi 温湿度网络时钟」到底是什么、由哪些模块组成
+> - 认识主控芯片 STM32L433 和 UP主「乐在程上」的 KE1 教学板，理解为什么选它
+> - 理解「复刻 (replication)」学习模式：代码已提供，你负责接线 + 烧录 + 配置 + 调试
+> - 在自己电脑上装好 STM32CubeIDE，能新建一个能编译通过的工程
 >
-> **产出 (Deliverable):** 能运行LED闪烁程序的ESP32开发板
+> **产出 | Deliverable**: 一台能被电脑识别出 COM 口的 KE1 板 + 一个能在 CubeIDE 里编译通过的空工程
 
 ---
 
-## 🕒 时间安排 | Schedule
+## 一、前置检查 | Pre-flight Checklist
 
-| 时间 | 活动类型 | 内容 |
-|------|---------|------|
-| 9:00-10:30 | 讲座 | 项目介绍与IoT概念 |
-| 10:45-12:00 | 实践 | 硬件认识与MicroPython烧录 |
-| 13:30-15:00 | 实践 | GPIO控制与LED实验 |
-| 15:15-16:30 | 练习 | 编程练习与调试 |
-| 16:30-17:00 | 总结 | 作业布置与Q&A |
+开始今天之前，确认你手上和电脑上都有这些：
 
----
-
-## 📖 上午: 项目介绍与硬件认识 | Morning: Project Intro & Hardware
-
-### 为什么要学这个? | Why Learn This?
-
-**真实应用场景:**
-- 家庭空气质量监测 - 知道何时开窗通风
-- 教室环境优化 - 保持学习环境舒适
-- 过敏原追踪 - PM2.5预警帮助鼻炎患者
-- 智能家居集成 - 自动控制空调/净化器
-
-**工程价值:**
-- IoT是未来10年最重要的技术趋势之一
-- MQTT协议广泛应用于工业物联网
-- ESP32是最流行的IoT开发平台(全球月销量>100万片)
-
-> **Real-world Applications:**
-> - Home air quality monitoring - Know when to open windows
-> - Classroom environment optimization - Maintain comfortable learning environment
-> - Allergen tracking - PM2.5 alerts help rhinitis patients
-> - Smart home integration - Automatically control AC/purifiers
->
-> **Engineering Value:**
-> - IoT is one of the most important tech trends for the next 10 years
-> - MQTT protocol is widely used in industrial IoT
-> - ESP32 is the most popular IoT development platform (>1M units/month globally)
-
----
-
-### 任务1.1: 项目架构理解 (30分钟)
-
-**步骤:**
-
-1. **阅读项目README** (10分钟)
-   ```bash
-   # 打开项目README
-   cat README.md
-   ```
-
-2. **绘制系统架构图** (15分钟)
-   - 画出数据流: 传感器 → ESP32 → MQTT → 服务器 → 仪表盘
-   - 标注每个组件的作用
-   - 可手绘或使用draw.io
-
-3. **小组讨论** (5分钟)
-   - 这个系统可以用在哪里?
-   - 可以添加什么传感器?
-
-**预期结果:**
-- 能用自己的话解释项目工作原理
-- 画出完整的系统架构图
-
-**常见问题:**
-- Q: 为什么需要MQTT?  
-  A: 因为WiFi不稳定，MQTT能保证消息可靠到达
-- Q: 为什么用ESP32而不是Arduino?  
-  A: ESP32自带WiFi，成本低，性能强
-
----
-
-### 任务1.2: 硬件组件认识 (60分钟)
-
-**硬件清单检查:**
-
-| 组件 | 数量 | 检查方法 |
+| 项目 | 要求 | 怎么检查 |
 |------|------|---------|
-| ESP32开发板 | 1 | 找到USB接口、GPIO引脚 |
-| BME680传感器 | 1 | 找到4个引脚(VCC,GND,SCL,SDA) |
-| PMS5003传感器 | 1 | 找到风扇和线缆 |
-| OLED显示屏 | 1 | 找到I2C接口 |
-| 面包板+杜邦线 | 1套 | 测试杜邦线导通性 |
-| USB线 | 1 | 确认Micro-USB接口 |
+| 硬件套件 | STM32L433 KE1 板 (或兼容 STM32L433 最小系统板)、ESP-01S、SHT31、SSD1306 OLED、USB-TypeC/Micro-USB 线 | 对照 `hardware/BOM.md` 清点 |
+| 电脑 | Windows 10/11（Mac/Linux 也可，但本课程截图以 Windows 为准） | — |
+| USB 口 | 至少一个空闲 USB 口 | 板子插上后能亮灯 |
+| 网络 | 能访问 ST 官网下载 CubeIDE | 浏览器打开 `st.com` 试试 |
+| 心态 | 零基础没关系，但要肯读报错信息 | — |
 
-**认识ESP32开发板:**
-
-```
-┌──────────────────────────────────────┐
-│         ESP32 DevBoard               │
-│  ┌────┐    ┌────┐    ┌────┐         │
-│  │USB │    │RST │    │EN  │         │
-│  └────┘    └────┘    └────┘         │
-│                                      │
-│  [GPIO00][GPIO01][GPIO02]...        │
-│  [  GND ][  VIN ][3V3 ]...          │
-└──────────────────────────────────────┘
-   ⚠️ 重要: VIN=5V输入, 3V3=3.3V输出
-```
-
-**引脚识别练习:**
-1. 找到3.3V引脚(红色标记)
-2. 找到GND引脚(黑色标记)
-3. 找到GPIO2(板载LED连接)
-4. 找到I2C引脚(GPIO21=SDA, GPIO22=SCL)
-
-**预期结果:**
-- 能准确说出每个组件的名称
-- 知道ESP32的主要引脚功能
-
-**常见问题:**
-- Q: 为什么有些引脚有红色标签?  
-  A: 这些是特殊功能引脚，使用时要小心
-- Q: 可以直接用5V供电吗?  
-  A: 可以接到VIN引脚，但IO引脚只能是3.3V
+> ⚠️ **重要提醒**: 今天不写任何代码。今天的核心是「把工具装好、把板子点亮」。磨刀不误砍柴工。
 
 ---
 
-## 💻 下午: MicroPython环境搭建 | Afternoon: MicroPython Setup
+## 二、我们要复刻什么？| What Are We Replicating?
 
-### 为什么要用MicroPython? | Why MicroPython?
+### 2.1 项目一句话介绍
 
-**对比Arduino C++:**
-- ✅ 语法简单，像普通Python
-- ✅ 交互式REPL，立即测试代码
-- ✅ 无需编译，开发效率高
-- ✅ 丰富的库支持
+我们要复刻 UP主「乐在程上」的 Bilibili 视频 [`BV1tb4y1U7Du`](https://www.bilibili.com/video/BV1tb4y1U7Du/) —— 一台 **WiFi 温湿度网络时钟**：摆在桌上，OLED 屏幕显示时间、温度、湿度，时间通过 WiFi 自动校准（网络授时），不用手调。
 
-> **Compared to Arduino C++:**
-> - ✅ Simple syntax, like regular Python
-> - ✅ Interactive REPL, test code immediately
-> - ✅ No compilation, high development efficiency
-> - ✅ Rich library support
+> **One-sentence summary**: We're replicating UP主 乐在程上's Bilibili video — a **WiFi temp/humidity network clock**: a desktop ornament whose OLED shows time, temperature, and humidity, with the time auto-synced over WiFi (SNTP), no manual setting.
+
+### 2.2 为什么叫「网络时钟」？
+
+普通电子时钟靠芯片内部的晶振计时，走久了会慢几秒几分钟。**网络时钟**每隔一段时间通过 WiFi 向互联网上的 NTP 服务器「对一次表」，所以永远准。这是物联网 (IoT) 设备最典型的能力：**能联网、能拿云端的真实数据**。
+
+> A normal clock drifts. A **network clock** periodically asks an NTP server on the internet for the correct time over WiFi, so it stays accurate. This is the most typical IoT capability: **it can go online and fetch real data from the cloud**.
+
+### 2.3 系统架构图（先看懂这张图，后面 10 天都在填它）
+
+```
+                 ┌──────────────┐
+   SHT31 (I2C) ──┤              ├── SSD1306 OLED (软件 I2C, 0.96")
+   蜂鸣器(PWM) ──┤  STM32L433   ├── ESP-01S / ESP8266 (UART, AT 固件 → WiFi SNTP)
+   按键 (GPIO) ──┤   (KE1 板)   ├── USB (供电 + 调试串口)
+                 └──────┬───────┘
+                        │ UART (AT 命令)
+                 ┌──────▼───────┐
+                 │   ESP8266    │── WiFi ── NTP 服务器 (网络授时)
+                 └──────────────┘
+```
+
+**每个模块的职责（讲 WHY）**:
+
+| 模块 | 干什么 | 为什么需要它 |
+|------|--------|-------------|
+| **STM32L433** | 主控 MCU，跑固件 | 它是「大脑」，但**没有 WiFi**——所以需要下面的 ESP8266 当「网卡」 |
+| **ESP8266 (ESP-01S)** | WiFi 协处理器 | L433 没有 WiFi 硬件，用 ESP8266 通过串口 AT 命令帮它联网、对时 |
+| **SHT31** | 测温湿度 | I2C 接口，±0.2°C / ±2%RH，比 DHT11 准一个数量级 |
+| **SSD1306 OLED** | 显示 | 0.96" 128×64，I2C，显示时间/温湿度 |
+| **蜂鸣器** | 整点报时 | 选做，用 PWM 驱动无源蜂鸣器 |
+| **按键** | 手动调时 | 选做，断网时备用 |
+
+> **关键认知**: STM32L433 和 ESP8266 是**两块独立的芯片**，通过串口(UART)用「AT 命令」这种文字协议通信。这不是一块带 WiFi 的芯片（比如 ESP32），而是「主控 + 网卡」的经典分工。理解这个分工，你就理解了一大半架构。
+
+### 2.4 「复刻」学习模式说明
+
+| 传统项目课 | 本项目的「复刻」模式 |
+|-----------|---------------------|
+| 老师讲原理，你从零写代码 | UP主的固件代码**已经提供**在 `software/src/` |
+| 重点在「写」 | 重点在「读得懂 + 接得对 + 烧得进 + 调得好」 |
+| 容易卡在语法 | 卡点在硬件接线、工具链、AT 命令时序——这些才是真实工程能力 |
+
+> **Why replication?** 零基础学员从零写 STM32 固件会被 HAL 库、寄存器、链接脚本淹没。复刻模式下，**代码是脚手架**，你站在脚手架上学习「真实硬件工程」的流程：看原理图 → 接线 → 配 CubeMX → 编译烧录 → 看串口日志 → 排错。这才是你以后做任何嵌入式项目都要用的核心能力。
 
 ---
 
-### 任务1.3: 安装Thonny IDE (20分钟)
+## 三、认识 STM32L433 和 KE1 板 | Meet the STM32L433 & KE1 Board
 
-**步骤:**
+### 3.1 STM32L433 是什么？
 
-1. **下载Thonny**
-   - 访问: https://thonny.org/
-   - 下载Windows安装包
-   - 运行安装程序(全部默认设置)
+STM32 是 ST（意法半导体）公司的 32 位 ARM Cortex-M 单片机系列。**L4** 子系列主打**低功耗 + 性能平衡**，L433 是其中一颗：
 
-2. **安装ESP32驱动**
-   - 访问: https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers
-   - 下载CP210x驱动
-   - 安装完成后重启电脑
+- 内核：ARM Cortex-M4，最高 80MHz（KE1 板跑 32MHz）
+- Flash：256KB，RAM：64KB（对我们这个项目绰绰有余）
+- 封装：LQFP48（KE1 板上的 CBT6 是 48 脚）
+- 自带外设：I2C ×3、USART ×3、SPI ×2、ADC、定时器……**但没有 WiFi/蓝牙**
 
-3. **测试连接**
+> **Why L433 and not the cheaper F103?** L4 系列更新、低功耗更好、Flash/RAM 更大，且 UP主 的 KE1 教学板用的就是它——我们复刻视频，自然跟着用同一颗芯片，引脚、时钟配置才能对得上。
+
+### 3.2 KE1 板是什么？
+
+KE1 是 UP主「乐在程上」为教学设计的 STM32L433 开发板，板载：
+- STM32L433CBT6 主控
+- USB-TypeC 接口（供电 + 虚拟串口 + 烧录，板载 ST-Link 或 USB 转串口芯片）
+- 8MHz HSE 晶振
+- 引出所有 GPIO，方便插 SHT31/OLED/ESP-01S
+- 板载一个 LED（用于「点灯」实验，一般在 PB5 或 PA5，以你的板子丝印为准）
+
+> ⚠️ **买不到 KE1 板怎么办？** 用任何 STM32L433 最小系统板都能复刻，只是引脚要按 `hardware/wiring-guide.md` 重新映射。课程以 KE1 板的引脚为准。
+
+### 3.3 看看板子：识别关键位置
+
+拿起你的 KE1 板，找到这些位置（对照板子丝印）：
+
+```
+        ┌──────── USB-TypeC ────────┐
+        │                            │
+   [LED]│  ┌──────────────────┐     │
+        │  │   STM32L433CBT6  │     │
+        │  │   (主控芯片)      │     │
+        │  └──────────────────┘     │
+        │   [8MHz 晶振]              │
+        │                            │
+        │  PA0 PA1 PA9 PA10 ...      │  ← 排针引出的 GPIO
+        │  PB8 PB9 PB10 PB13 PB14   │  ← 今天记住这几个，后面天天用
+        └────────────────────────────┘
+```
+
+**今天必须记住的引脚**（后面 9 天反复出现）：
+
+| 引脚 | 功能 | 用在哪 |
+|------|------|--------|
+| **PA9 / PA10** | USART1 TX/RX | 调试串口 printf（USB 看日志） |
+| **PB10 / PB11** | USART3 TX/RX | 连 ESP8266，发 AT 命令 |
+| **PB13 / PB14** | I2C2 SCL/SDA | 硬件 I2C，连 SHT31 |
+| **PB8 / PB9** | 软件 I2C | 连 SSD1306 OLED |
+| **板载 LED** | GPIO 输出 | 今天点灯用 |
+
+---
+
+## 四、安装工具链：STM32CubeIDE | Install the Toolchain: STM32CubeIDE
+
+### 4.1 为什么用 CubeIDE？
+
+写 STM32 程序有几条路：Keil（收费、Windows）、裸 Makefile+GCC（配置烦）、**STM32CubeIDE（免费、跨平台、ST 官方、自带 CubeMX 图形化配引脚）**。我们用 CubeIDE——它把「配引脚时钟」和「写代码编译」合在一个软件里，对零基础最友好。
+
+> **Why CubeIDE?** It's free, official, cross-platform, and bundles CubeMX (graphical pin/clock config) with a GCC compiler and debugger. For zero-foundation students, one tool does everything.
+
+### 4.2 下载与安装（约 30-60 分钟，取决于网速）
+
+1. **注册 ST 账号**（可选但推荐，下载更快）：访问 `https://www.st.com/en/development-tools/stm32cubeide.html`，点 "Get Software"，会要求登录/注册。
+2. **下载** 对应你系统的安装包（Windows 选 `stm32cubeide_win.zip` 或 `.exe`）。版本 **1.6.1 或更高**都行。
+3. **安装**：双击运行，全部默认下一步。注意安装最后会问要不要装 **ST-LINK 驱动**，**必须勾上**——这是烧录和调试的驱动。
+4. **安装后重启电脑**（让驱动生效）。
+
+### 4.3 验证安装：插上板子，看 COM 口
+
+1. 用 USB 线把 KE1 板插上电脑。
+2. Win+X → 设备管理器 → 展开 "端口 (COM 和 LPT)"。
+3. 应该能看到一个新设备，名字类似 `STMicroelectronics Virtual COM Port (COM3)` 或 `USB Serial Device (COM3)`。**记住这个 COM 号**，后面天天用。
+
+> ✅ **检查点 1.1**: 设备管理器能看到 COM 口 → 驱动装好了。看不到？见下方「常见错误」。
+
+---
+
+## 五、在 CubeIDE 里新建一个能编译的空工程 | Create a Compilable Empty Project
+
+这一步是今天下午的重头戏。目标：让 CubeIDE 认识你的 STM32L433，配好最小系统（时钟 + 一个 LED + 调试串口），编译通过。
+
+### 5.1 新建工程
+
+1. 打开 CubeIDE，选一个 workspace 目录（路径**不要有中文和空格**，比如 `D:\ke1_ws`）。
+2. `File → New → STM32 Project`。
+3. 搜 `L433`，选 `STM32L433CBTx`（KE1 板就是这个），点 Next。
+4. Project Name 填 `day01_blink`，Targeted Language 选 **C**，点 Finish。
+5. 弹出 "Initialize all peripherals with their default Mode?" 选 Yes。打开 CubeMX 图形界面（芯片引脚图）。
+
+### 5.2 配时钟（讲 WHY）
+
+STM32 上电默认用内部 16MHz HSI，但精度差（±1%），跑串口/USB 会偏。KE1 板有 8MHz 外部晶振 (HSE)，我们用它 + PLL 倍频到 32MHz。
+
+1. 左侧 `Pinout & Configuration → System Core → RCC`，把 **High Speed Clock (HSE)** 改成 `Crystal/Ceramic Resonator`。
+2. 切到 `Clock Configuration` 标签页，把 `HSE` 设为输入，PLL Source 选 HSE，`PLLM=1, PLLN=8, PLLR=2`，SYSCLK 选 PLLCLK，最终 `HCLK = 32 MHz`。（KE1 固件就是这么配的，见参考源码 `SystemClock_Config()`。）
+
+> **WHY 32MHz not 80MHz?** L433 最高能跑 80MHz，但 32MHz 已经够这个项目用，且功耗低、串口分频更整。UP主 固件用 32MHz，复刻要对齐。
+
+### 5.3 配一个 GPIO 输出（板载 LED）和调试串口 USART1
+
+1. 在引脚图上找到板载 LED 对应的引脚（查你的板子丝印，假设是 **PA5**），点它选 `GPIO_Output`。
+2. 左侧 `System Core → GPIO`，给 PA5 起个用户标签 `LED`。
+3. 左侧 `Connectivity → USART1`，Mode 选 `Asynchronous`（异步串口），参数页把 Baud Rate 设 `115200`。USART1 默认走 PA9/PA10，正好和 KE1 一致，不用改引脚。
+4. `Project → Generate Code`（或 Ctrl+S）。
+
+### 5.4 让 printf 走串口（讲 WHY）
+
+CubeMX 生成的代码里 `printf` 默认**什么都不输出**——因为 C 标准库不知道你要往哪个串口发。我们要重定向 `__io_putchar`。在 `main.c` 的 `/* USER CODE BEGIN 0 */` 区里加：
+
+```c
+/* USER CODE BEGIN 0 */
+#include <stdio.h>
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
+PUTCHAR_PROTOTYPE
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
+}
+/* USER CODE END 0 */
+```
+
+> **WHY this matters**: 这段是 STM32 串口 printf 的「标准咒语」。KE1 参考源码 `usart.c` 里就是这么写的。看不懂没关系，照抄，Day 2 会讲每一行。关键：**必须放在 `USER CODE BEGIN/END` 之间**，否则下次 Generate Code 会被覆盖。
+
+### 5.5 在 main 循环里点灯 + 打印
+
+在 `main()` 的 `/* USER CODE BEGIN WHILE */` 后：
+
+```c
+/* USER CODE BEGIN WHILE */
+printf("Hello KE1! Day 1 alive.\r\n");
+while (1)
+{
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    printf("tick\r\n");
+    HAL_Delay(500);
+    /* USER CODE END WHILE */
+}
+```
+
+### 5.6 编译
+
+按 **Ctrl+B** 编译。Console 应该出现 `Build Finished. 0 errors, 0 warnings.`
+
+> ✅ **检查点 1.2**: 编译 0 error → 工具链完全就绪。今天**不烧录**也行（烧录放 Day 2 专门讲），但如果你想现在就看到灯闪，可以按 Run 按钮，CubeIDE 会用板载 ST-Link 烧进去。
+
+---
+
+## 六、常见错误 | Common Errors
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| 设备管理器看不到 COM 口 | USB 线是「只能充电」的线 / ST-Link 驱动没装 | 换一根能传数据的 USB 线；重装 CubeIDE 时勾上 ST-LINK 驱动 |
+| 设备管理器有黄色感叹号 | 驱动冲突 | 右键 → 卸载设备 → 拔插重装 |
+| CubeIDE 新建工程找不到 L433 | 芯片库没下载 | 装新版 CubeIDE（1.10+ 自带全系列 MCU 包） |
+| 编译报错 `cannot find -lstdc++` | 工具链没装全 | 重装 CubeIDE，别自定义跳过组件 |
+| `printf` 编译过但串口没输出 | 没重定向 / USART1 没初始化 / 波特率不对 | 检查 5.4 的代码块；串口助手用 115200 打开对应 COM |
+| 编译警告 `LED_Pin undeclared` | PA5 标签没起名 `LED` 或没 Generate Code | 回 CubeMX 给引脚起 Label，重新 Generate |
+
+---
+
+## 七、调试技巧 | Debugging Tips
+
+1. **报错从上往下看第一个**：C 编译器第一个错误后面经常是一连串「被牵连」的错误，只修第一个再编译，往往少一大半。
+2. **Console 别关**：CubeIDE 底部 Console 窗口显示编译/烧录的完整输出，报错都在这。
+3. **串口助手推荐**: 用 **MobaXterm / PuTTY / 友善串口助手**，波特率 115200，8N1。先确认能收到板子的 `tick` 再继续。
+4. **USER CODE 区是命根子**: 永远只在自己代码写在 `/* USER CODE BEGIN X */ ... END X */` 之间。写在别处，下次 Generate 会被删。
+
+---
+
+## 八、今日检查点 | Day 1 Checkpoints
+
+- [ ] 能用自己的话讲清楚「STM32L433 + ESP8266」为什么是两块芯片、各自干嘛
+- [ ] 设备管理器能看到 KE1 板的 COM 口
+- [ ] CubeIDE 装好，新建了 `day01_blink` 工程
+- [ ] 工程编译 0 error（点灯 + printf 代码已加，但今天不要求烧录看到效果，那是 Day 2）
+- [ ] 截图：CubeIDE 编译通过的 Console 输出，存到 `assignments/week-1-checkin.md` 里 Day1 的位置
+
+---
+
+## 九、今日作业 | Homework
+
+1. **读**: 浏览 Bilibili 视频 [`BV1tb4y1U7Du`](https://www.bilibili.com/video/BV1tb4y1U7Du/) 的前 5 分钟，对最终成品有直观印象。
+2. **画**: 在纸上或用 [draw.io](https://app.diagrams.net/) 画一遍 §2.3 的系统架构图，标注每个模块的「职责」和「为什么需要它」。拍照存档。
+3. **写**: 在 `assignments/week-1-checkin.md` 的 Day 1 小节填写：COM 口号、CubeIDE 版本、编译是否通过、遇到的 1 个坑及怎么解决的。
+4. **Git 提交**（养成习惯）:
    ```bash
-   # Windows: 在设备管理器中查找COM口
-   # 设备管理器 → 端口(COM和LPT) → Silicon Labs CP210x
+   cd project-02-env-monitor-mid
+   git add curriculum/day-01.md assignments/week-1-checkin.md
+   git commit -m "day01: toolchain ready, project compiles"
    ```
-
-**预期结果:**
-- Thonny能正常启动
-- 设备管理器能看到COM口(如COM3)
-
-**常见问题:**
-- Q: 找不到COM口?  
-  A: 检查USB线是否连接，尝试更换USB口
-- Q: 驱动安装失败?  
-  A: 可能需要禁用驱动强制签名(Windows 10)
 
 ---
 
-### 任务1.4: 烧录MicroPython固件 (40分钟)
+## 十、明日预告 | Tomorrow
 
-**步骤:**
+**Day 2: 第一个程序 —— 点灯 + 串口 printf + 烧录流程**
+- 把今天的代码烧进板子，看到 LED 闪烁 + 串口打印 `tick`
+- 系统讲 GPIO 输出和 UART 异步通信的原理
+- 学会 ST-Link 烧录 + 串口助手看日志的完整闭环
 
-1. **下载固件**
-   - 访问: https://micropython.org/download/ESP32_GENERIC/
-   - 下载最新版本(.bin文件)
-
-2. **烧录固件**
-   - 在Thonny中: 工具 → Options → 解释器
-   - 选择"MicroPython (ESP32)"
-   - 点击"Install or update MicroPython"
-   - 选择端口和固件文件
-   - 点击"安装"
-
-3. **验证安装**
-   ```python
-   # 在Thonny Shell中输入
-   print("Hello ESP32!")
-   # 应该看到: Hello ESP32!
-   ```
-
-**预期结果:**
-- ESP32能执行Python命令
-- Shell显示MicroPython版本信息
-
-**常见问题:**
-- Q: 烧录失败?  
-  A: 按住BOOT按钮再接USB，进入下载模式
-- Q: 固件版本过旧?  
-  A: 重新下载最新版本烧录
+**前置准备**: 把今天的 `day01_blink` 工程编译通过；装好一个串口助手软件。
 
 ---
 
-## 🔧 实践: GPIO控制LED | Practice: GPIO LED Control
-
-### 任务1.5: LED闪烁实验 (60分钟)
-
-**为什么学GPIO?**  
-GPIO(通用输入输出)是微控制器的"手指"，能控制外部设备。
-
-> **Why learn GPIO?**  
-> GPIO (General Purpose Input/Output) is the microcontroller's "fingers", capable of controlling external devices.
-
-**步骤:**
-
-1. **连接LED电路**
-   ```
-   ESP32 GPIO2 → 220Ω电阻 → LED正极
-   ESP32 GND   → LED负极
-   ```
-   注: ESP32板载LED已连接到GPIO2，可直接使用
-
-2. **编写控制程序**
-   ```python
-   from machine import Pin
-   import time
-
-   # 设置GPIO2为输出
-   led = Pin(2, Pin.OUT)
-
-   # 循环闪烁
-   while True:
-       led.value(1)      # 点亮LED
-       print("LED ON")
-       time.sleep(1)     # 等待1秒
-       
-       led.value(0)      # 熄灭LED
-       print("LED OFF")
-       time.sleep(1)     # 等待1秒
-   ```
-
-3. **上传并运行**
-   - 在Thonny中粘贴代码
-   - 保存为`main.py`(ESP32会自动运行)
-   - 点击"运行"按钮
-
-4. **实验改进**
-   ```python
-   # 挑战: 让LED闪烁3次后停止
-   for i in range(3):
-       led.value(1)
-       time.sleep(0.5)
-       led.value(0)
-       time.sleep(0.5)
-   print("Blink complete!")
-   ```
-
-**预期结果:**
-- LED有节奏地闪烁
-- Shell中打印ON/OFF信息
-- 能修改闪烁频率
-
-**常见问题:**
-- Q: LED不亮?  
-  A: 检查引脚号，确认GPIO2
-- Q: 如何停止程序?  
-  A: 按Ctrl+C或点击停止按钮
-
----
-
-## 📝 今日作业 | Today's Assignment
-
-### 基础作业 (必做)
-
-1. **提交硬件照片**  
-   拍摄你的ESP32开发板，标注出:
-   - USB接口
-   - 3.3V引脚
-   - GND引脚
-   - GPIO2引脚
-
-2. **完成代码练习**  
-   修改LED闪烁程序，实现:
-   - SOS摩斯密码(三短三长三短)
-   - 闪烁频率可调
-
-3. **回答问题**  
-   - 什么是IoT?请举3个生活中的例子
-   - ESP32与Arduino有什么区别?
-
-### 进阶作业 (选做)
-
-1. 研究: MicroPython是如何运行的?
-2. 尝试: 控制多个LED(需要额外硬件)
-3. 思考: 如何让LED闪烁更精确?(提示: time.ticks_ms())
-
----
-
-## 📚 参考资源 | References
-
-- [MicroPython GPIO文档](https://docs.micropython.org/en/latest/esp32/quickref.html#gpio-pins)
-- [ESP32引脚参考](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html)
-- [Thonny官方教程](https://github.com/thonny/thonny/wiki)
-
----
-
-## 🔮 明日预告 | Tomorrow's Preview
-
-**Day 2: MicroPython基础与I2C传感器**
-
-- 学习I2C通信协议
-- 连接BME680温湿度传感器
-- 读取并显示环境数据
-
-**前置准备:**
-- 复习Python列表和字典
-- 阅读I2C通信原理(5分钟)
-
----
-
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+*最后更新: 2026-06 | Last updated: 2026-06*

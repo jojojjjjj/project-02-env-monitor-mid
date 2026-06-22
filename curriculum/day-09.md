@@ -1,410 +1,263 @@
-# Day 9: 服务器端搭建(二) - 数据存储与可视化 | Server Setup Part 2 - Storage & Visualization
+# Day 9: 组装 —— 焊接 / 外壳 / 桌面摆件化 | Assembly: Soldering / Enclosure / Desktop Form Factor
 
-> **今日目标 (Today's Goals):**
-> - 安装InfluxDB时序数据库
-> - 实现数据持久化存储
-> - 配置Grafana可视化仪表盘
-> - 创建实时监测面板
->
-> **产出 (Deliverable):** 完整的数据存储与可视化系统
+> **学习目标 | Learning Objectives**
+> - 把面包板原型转成焊接版（万用板或定制 PCB），理解为什么原型要转焊接
+> - 学会基础焊接：烙铁温度、焊锡量、虚焊判断
+> - 设计并制作外壳（3D 打印 / 亚克力 / 木盒），让时钟成为「桌面摆件」而非「一堆线」
+> - 完成组装，通电验证全部功能在成品形态下正常
 
----
-
-## 🕒 时间安排 | Schedule
-
-| 时间 | 活动类型 | 内容 |
-|------|---------|------|
-| 9:00-10:30 | 讲座 | 时序数据库原理与Grafana介绍 |
-| 10:45-12:00 | 实践 | InfluxDB安装配置 |
-| 13:30-15:00 | 实践 | Grafana安装与数据源配置 |
-| 15:15-16:30 | 练习 | 仪表盘设计与创建 |
-| 16:30-17:00 | 总结 | 作业布置与Q&A |
+> **产出 | Deliverable**: 一个焊接好、装进外壳、摆在桌上能稳定运行的温湿度网络时钟成品
 
 ---
 
-## 📖 上午: 时序数据库 | Morning: Time Series Database
+## 一、前置检查 | Pre-flight Checklist
 
-### 为什么需要时序数据库? | Why Need TSDB?
-
-**传统数据库 vs 时序数据库:**
-
-| 特性 | MySQL/PostgreSQL | InfluxDB |
-|------|-----------------|----------|
-| **优化目标** | 事务处理 | 时间序列查询 |
-| **写入性能** | 每秒数千条 | 每秒百万条 |
-| **压缩率** | 低 | 高(90%+) |
-| **聚合查询** | 慢 | 极快 |
-| **数据保留** | 永久 | 自动过期 |
-
-**真实应用场景:**
-- IoT传感器数据(本项目)
-- 股票价格走势
-- 服务器监控指标
-- 天气历史数据
-
-> **Time Series Data:** Data points indexed by time, optimized for time-based queries
+- [ ] Day 8 的全功能原型在面包板上跑通（时间 + 温湿度 + 蜂鸣器 + 按键 + 断网回退）
+- [ ] 手上有焊接工具：电烙铁（30-60W）、焊锡丝（0.6-0.8mm 含助焊剂）、松香、吸锡器、海绵
+- [ ] 万用板（洞洞板）或定制 PCB（`hardware/` 有参考 PCB 文件）
+- [ ] 外壳材料：3D 打印机 / 亚克力板 + 螺丝 / 现成小木盒，三选一
 
 ---
 
-### 任务9.1: InfluxDB安装 (40分钟)
+## 二、从面包板到焊接版 —— 为什么要这步 | From Breadboard to Soldered: Why
 
-**Windows安装:**
+### 2.1 面包板的局限
 
-1. **下载InfluxDB 2.x**
-   ```bash
-   # 访问官网下载
-   https://portal.influxdata.com/downloads/
-   # 选择Windows 64-bit
-   ```
+面包板靠弹簧夹住元件腿，好处是快、可拆。但坏处致命：
+- **接触不良**：杜邦线松、弹簧老化，运输一下就断路——你今天好好的，明天不亮了
+- **寄生电容大**：跳线长，I2C/高速信号易受干扰
+- **不耐震**：摆件天天被碰，面包板撑不住
+- **不美观**：一堆线不像产品
 
-2. **运行安装**
-   - 双击安装包
-   - 默认安装路径
-   - 安装后自动启动服务
+> **WHY solder for a "desktop ornament"?** 摆件是要长期展示、被触碰、被搬动的。面包板原型是「验证功能」，焊接版是「成为产品」。这步是从「能跑」到「能用」的跨越。真实硬件项目都要经历这个转换。
 
-3. **初始化设置**
-   ```bash
-   # 访问Web UI
-   http://localhost:8086
-   
-   # 首次访问会要求设置:
-   - 用户名: admin
-   - 密码: (自行设置)
-   - 组织名: airbutler
-   - Bucket名: sensors
-   ```
+### 2.2 两种焊接方案
 
-4. **验证安装**
-   ```bash
-   # PowerShell
-   influx version
-   
-   # 或访问API
-   curl -I http://localhost:8086/health
-   ```
+| 方案 | 难度 | 成本 | 效果 | 建议 |
+|------|------|------|------|------|
+| **万用板（洞洞板）** | ⭐⭐ | ¥5 | 线得自己走，丑但能成 | 默认方案，零基础首选 |
+| **定制 PCB** | ⭐⭐⭐⭐ | ¥30（嘉立创打样 5 片） | 专业、美观、可靠 | 进阶方案，Day 10 优化 |
 
-**InfluxDB核心概念:**
+> 本课程默认万用板方案。想挑战 PCB 的同学看 `hardware/assembly-steps.md` 的 PCB 版本——用立创 EDA 画一个简单双层板，发嘉立创打样，3 天到货。
 
-| 概念 | 说明 | 示例 |
+---
+
+## 三、焊接基础 —— 笨鸟先飞 | Soldering Basics
+
+### 3.1 烙铁准备
+
+1. **温度**: 320-350°C。无铅焊锡 350-380°C。太高烧元件，太低焊不化。
+2. **上锡**: 烙铁头加热后，沾一点焊锡 + 松香，让头子裹一层亮亮的锡——这叫「上锡」，导热好、防氧化。
+3. **清洁**: 海绵沾水拧干，焊前擦一下头子。或用铜丝球（更保护头子）。
+
+### 3.2 焊接一个点的五步法（讲 WHY）
+
+1. **加热焊盘和元件腿**：烙铁头同时接触 PCB 焊盘和元件引脚（2 秒）——让两者都热起来
+2. **送锡**：焊锡丝从烙铁头**对面**送入（不是从烙铁头上放）——焊锡融化后会自动流向热的地方，包裹焊盘和引脚
+3. **见锡够就停**：焊点成一个光亮的小火山形即可，别堆太多
+4. **先收锡再收烙铁**：先撤锡丝，再撤烙铁——否则锡丝粘在焊点上
+5. **冷却 2 秒别动**：锡凝固前晃动会产生「虚焊」发白结晶
+
+> **WHY heat both pad and pin first?** 焊锡只往热的地方流。如果只加热盘不加热引脚，锡包住盘但没爬上引脚——虚焊。同时加热两者，锡才会浸润两者形成可靠连接。这是焊接最核心的动作。
+
+### 3.3 好焊点 vs 坏焊点
+
+| 好焊点 | 坏焊点 |
+|--------|--------|
+| 光亮、光滑 | 暗哑、颗粒状（虚焊，冷焊） |
+| 火山形，包裹引脚 | 球形，没爬上引脚（少锡或没加热引脚） |
+| 大小适中 | 堆太多（可能短路邻脚）或太少（接触不良） |
+
+### 3.4 元件焊接顺序（讲 WHY）
+
+**从矮到高、从内到外**：
+1. 先焊矮的（电阻、电容、IC 插座）——高元件挡手
+2. 再焊高的（电解电容、排针、接插件）
+3. 最后焊模块（ESP-01S、SHT31、OLED 用排母插座，方便更换）
+
+> **WHY sockets for ESP-01S/OLED?** 这些模块贵、易坏、可能要拆。用排母当插座，插拔方便，焊死了坏了就难修。这是工程经验。
+
+---
+
+## 四、焊接实操 —— 把原型搬上万用板 | Soldering Practice
+
+### 4.1 布局规划
+
+万用板上先摆放大件，规划位置：
+- KE1 板（或 STM32L433 最小系统）放中央，用排母插座
+- OLED 放一端，排母插座（方便拆）
+- SHT31、ESP-01S 各占一角
+- 蜂鸣器、按键放边缘
+
+**画在纸上**先布局，确认引脚走线不会太乱。万用板的走线原则：电源线（VCC/GND）走总线，信号线尽量短。
+
+### 4.2 电源走线
+
+万用板上下各留一整条做 VCC 和 GND 总线（用焊锡拖一长条或铜丝连）。所有元件的 VCC 接 VCC 总线、GND 接 GND 总线。**ESP-01S 的 VCC 单独从 AMS1117 拉粗线**（电流大）。
+
+### 4.3 信号线焊接
+
+用细绝缘导线（或剥了的杜邦线芯）连接：
+- PB13/PB14 → SHT31 SCL/SDA
+- PB8/PB9 → OLED SCL/SDA
+- PB10/PB11 → ESP-01S TX/RX（注意交叉）
+- PA0 → 蜂鸣器
+- PA1/PA2 → 按键
+
+每根线焊完**用万用表通断档测一下**两端是否通——边焊边测，别等全焊完发现不通再排查。
+
+### 4.4 通电前检查（必做！）
+
+焊完后，通电前用万用表：
+1. **测电源对地电阻**：VCC 和 GND 之间，红表笔接 VCC 黑接 GND，应该有几百Ω到几kΩ（有元件在）。**如果 0Ω（短路），绝对不能通电**——检查焊锡有没有连锡。
+2. **测 VCC/GND 没接反**：确认每个模块的 VCC 脚都连到 VCC 总线、GND 连到 GND。
+
+> ⚠️ **通电前短路检查是命根子**。焊锡连锡造成 VCC-GND 短路，一上电 LDO 或 USB 口就烧。5 秒的万用表检查省你 ¥50 的元件。
+
+### 4.5 通电验证
+
+接 USB 上电，按 Day 1-8 的检查点逐个验证：
+- [ ] LED 亮 / 串口能 printf
+- [ ] OLED 显示
+- [ ] SHT31 读数
+- [ ] ESP8266 连 WiFi
+- [ ] SNTP 对时
+- [ ] 蜂鸣器、按键
+
+焊接版功能应和面包板版完全一致。**任何一个功能失效**：先查焊接（虚焊、连锡、线断），再查代码（大概率代码没动，是焊接问题）。
+
+---
+
+## 五、外壳设计 —— 桌面摆件化 | Enclosure Design
+
+### 5.1 外壳的作用
+
+- 保护电路（防尘、防碰）
+- 固定元件（OLED 要正面朝外、按键要露出来）
+- 美观（摆件属性）
+- 散热（ESP-01S 工作时发热，要留通风孔）
+
+### 5.2 三种外壳方案
+
+| 方案 | 工具 | 成本 | 难度 | 效果 |
+|------|------|------|------|------|
+| **3D 打印** | FDM 打印机（学校机房/淘宝代打） | ¥10-30 | ⭐⭐ | 可定制形状，最专业 |
+| **亚克力叠层** | 激光切割（淘宝代切） | ¥20 | ⭐ | 透明科技感，简单 |
+| **现成盒子改装** | 纸盒/木盒 + 美工刀 | ¥5 | ⭐ | 最快，原型感 |
+
+### 5.3 3D 打印外壳设计要点（讲 WHY）
+
+用 Tinkercad / Fusion 360 设计，注意：
+
+1. **OLED 窗口**: 开一个 30×12mm 矩形窗，OLED 从内部贴紧窗口。窗口边缘加 1mm 凸台卡住 OLED（免螺丝）。
+2. **按键孔**: 圆孔，直径比按键帽小 0.2mm，按键从里面顶出来。
+3. **ESP-01S 通风孔**: 在 ESP-01S 对应位置开几个 3mm 圆孔散热——WiFi 模块热了会不稳定。
+4. **USB 口开口**: 一端开方孔让 USB 线穿出供电。
+5. **底盖可拆**: 用螺丝或卡扣，方便日后维修。
+
+> **WHY ventilation holes for ESP-01S?** ESP8266 发射 WiFi 时结温可达 70°C+。密封外壳里热量累积，温度升高 → WiFi 不稳定 → 对时失败。通风孔是真实产品都要考虑的热设计。哪怕 ¥10 的智能插座都留了散热孔。
+
+### 5.4 亚克力叠层方案（最快出效果）
+
+买 5mm 透明亚克力板，激光切割成 4 层：
+- 第 1 层：顶板，开 OLED 窗 + 按键孔
+- 第 2-3 层：中间框，留出元件空间
+- 第 4 层：底板
+
+四角用 M3 螺丝柱 + 铜柱固定。淘宝代切一片 ¥5，4 片 ¥20，2 天到货。
+
+---
+
+## 六、组装与最终验证 | Final Assembly & Verification
+
+### 6.1 组装顺序
+
+1. 焊接好的万用板用双面胶或螺丝固定在外壳底部
+2. OLED 从内部贴到窗口（用热熔胶固定四角）
+3. 按键从内部插入孔位
+4. ESP-01S、蜂鸣器就位
+5. USB 线穿出
+6. 盖上底盖，拧螺丝
+
+### 6.2 整机验证清单
+
+通电，依次确认：
+- [ ] OLED 从窗口能看清，无遮挡
+- [ ] 时间正确（SNTP 对上了）
+- [ ] 温湿度显示
+- [ ] 整点报时（手动触发测）
+- [ ] 按键能调时
+- [ ] WiFi 断了能回退，恢复能重连
+- [ ] 摆在桌上 30 分钟稳定运行不发烫
+
+### 6.3 拍成品照
+
+多角度拍照（正面、侧面、背面、和手机时间对比），存到 `assignments/final-presentation.md` 和 `week-2-checkin.md`。这是 Day 10 演示的素材。
+
+---
+
+## 七、常见错误 | Common Errors
+
+| 现象 | 原因 | 解决 |
 |------|------|------|
-| **Bucket** | 数据存储桶 | sensors |
-| **Measurement** | 测量名称 | temperature |
-| **Field** | 字段(必须有值) | value=25.5 |
-| **Tag** | 标签(索引) | device="air001" |
-| **Timestamp** | 时间戳 | 1678901234 |
+| 焊点发白颗粒状 | 烙铁温度低 / 冷却时晃动了 | 重焊，加热到位后别动 |
+| 焊锡堆成球不爬引脚 | 没同时加热引脚 | 烙铁同时压焊盘和引脚 2 秒再送锡 |
+| 连锡（相邻脚短路） | 锡太多 | 用吸锡带或吸锡器吸掉重来 |
+| 焊完某功能失效 | 虚焊 / 线断 | 万用表通断档逐段量信号线 |
+| 通电冒烟 | VCC/GND 短路或接反 | 立刻断电！查连锡、查极性 |
+| ESP-01S 装外壳后连不上 | 信号被金属外壳屏蔽 / 散热不够 | 外壳别用全金属；ESP-01S 位置开孔 |
+| OLED 显示但角度偏看不清 | OLED 装反了 / 对比度低 | 确认 OLED 正面朝窗口；`OLED_WR_Byte(0x81,0); OLED_WR_Byte(0xFF,1)` 提对比度 |
+| 按键装外壳后按不动 | 孔太小 / 按键没顶到位 | 孔放大 0.2mm；按键从内部推到位再固定 |
 
 ---
 
-### 任务9.2: 数据写入实现 (30分钟)
+## 八、调试技巧 | Debugging Tips
 
-**安装Python客户端:**
-
-```bash
-pip install influxdb-client
-```
-
-**创建InfluxDB写入器:**
-
-```python
-# influx_writer.py
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
-import datetime
-
-class InfluxDBWriter:
-    """InfluxDB数据写入器"""
-    
-    def __init__(self, url="http://localhost:8086", token="", org="airbutler"):
-        self.url = url
-        self.token = token
-        self.org = org
-        self.bucket = "sensors"
-        
-        # 创建客户端
-        self.client = InfluxDBClient(url=url, token=token, org=org)
-        self.write_api = self.client.write_api(write_options=SYCHRONOUS)
-    
-    def write_sensor_data(self, data):
-        """写入传感器数据"""
-        try:
-            # 创建数据点
-            point = Point("sensor_reading") \
-                .tag("device_id", data.get('device_id', 'unknown')) \
-                .time(datetime.datetime.fromtimestamp(data.get('t', 0)))
-            
-            # 添加字段(必须)
-            if data.get('T') is not None:
-                point = point.field("temperature", float(data['T']))
-            if data.get('H') is not None:
-                point = point.field("humidity", float(data['H']))
-            if data.get('P') is not None:
-                point = point.field("pressure", float(data['P']))
-            if data.get('PM25') is not None:
-                point = point.field("pm25", int(data['PM25']))
-            if data.get('PM10') is not None:
-                point = point.field("pm10", int(data['PM10']))
-            
-            # 写入数据库
-            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
-            return True
-        
-        except Exception as e:
-            print(f"InfluxDB写入错误: {e}")
-            return False
-    
-    def query_data(self, measurement="temperature", time_range="-1h"):
-        """查询数据"""
-        query_api = self.client.query_api()
-        
-        query = f'''
-            from(bucket: "{self.bucket}")
-              |> range(start: {time_range})
-              |> filter(fn: (r) => r._measurement == "{measurement}")
-              |> filter(fn: (r) => r.device_id == "air001")
-        '''
-        
-        result = query_api.query(org=self.org, query=query)
-        return result
-    
-    def close(self):
-        """关闭连接"""
-        self.client.close()
-
-# 使用示例
-# 在MQTT订阅器的_handle_sensor_data中添加:
-# influx_writer.write_sensor_data(data)
-```
+1. **边焊边测**: 每焊完一个模块就测一下那个模块的功能，别等全焊完——出问题范围太大。
+2. **万用表是最好的朋友**: 通断档量连通、电压档量供电、电阻档量短路。三个档位覆盖 90% 焊接调试。
+3. **对照面包板**: 焊接版功能挂了，把面包板版拿出来对比——哪不一样就是问题点。
+4. **散热测试**: 组装完跑 1 小时，摸 ESP-01S 和 LDO 温度。烫手 (>60°C) 要加散热孔或铜箔导热。
+5. **摔落测试**: 从 10cm 高度轻摔一下（摆件会被碰），看是否还正常——检验焊接和外壳固定。
 
 ---
 
-## 💻 下午: Grafana可视化 | Afternoon: Grafana Visualization
+## 九、今日检查点 | Day 9 Checkpoints
 
-### 任务9.3: Grafana安装 (30分钟)
+- [ ] 焊接完成，万用表测无短路
+- [ ] 通电后所有功能（时间/温湿度/蜂鸣器/按键/断网回退）正常
+- [ ] 装进外壳，OLED 可见、按键可按、通风良好
+- [ ] 成品摆在桌上连续运行 30 分钟稳定
+- [ ] 拍了成品照（正面 + 侧面 + 和手机对比）
+- [ ] 能解释「为什么原型要转焊接」「焊点好坏怎么判断」
 
-**Windows安装:**
+---
 
-1. **下载Grafana**
+## 十、今日作业 | Homework
+
+1. **焊接质量自检**: 拍焊点特写照片，标出 3 个好焊点和 1 个需要返修的焊点，写理由。
+2. **外壳设计文档**: 在 `week-2-checkin.md` 写 200 字说明你的外壳方案选型理由（3D打印/亚克力/盒子 各为什么选/不选）。
+3. **热测试报告**: 记录成品连续运行 1 小时后 ESP-01S 和 LDO 的手感温度（常温/温/烫）。
+4. **回答**:
+   - 焊接时为什么要「先加热焊盘和引脚，再送锡」？
+   - 通电前为什么要测 VCC-GND 电阻？
+   - ESP-01S 在外壳里为什么要留通风孔？
+5. **Git 提交**:
    ```bash
-   # 访问官网下载
-   https://grafana.com/grafana/download
-   # 选择Windows版本
-   ```
-
-2. **解压并运行**
-   ```bash
-   # 解压到 C:\Program Files\Grafana
-   cd C:\Program Files\Grafana\bin
-   
-   # 启动服务
-   .\grafana-server.exe
-   ```
-
-3. **访问Web UI**
-   ```
-   http://localhost:3000
-   
-   # 默认登录
-   用户名: admin
-   密码: admin
-   # 首次登录会要求修改密码
+   git add curriculum/day-09.md
+   git commit -m "day09: soldered board + enclosure, desktop form factor"
    ```
 
 ---
 
-### 任务9.4: 配置数据源 (30分钟)
+## 十一、明日预告 | Tomorrow
 
-**添加InfluxDB数据源:**
+**Day 10: 调试 + 最终展示 + 复盘**
+- 整机全功能回归测试
+- 准备 10 分钟最终演示（演示 + 架构讲解 + 复刻历程）
+- 复盘：学到了什么、踩了什么坑、下一步优化方向
 
-1. **导航**
-   - 设置 → Data sources → Add data source
-   - 选择"InfluxDB"
-
-2. **配置**
-   ```
-   Name: InfluxDB_AirButler
-   Query Language: Flux
-   URL: http://localhost:8086
-   Org: airbutler
-   Token: (你的InfluxDB Token)
-   ```
-
-3. **测试连接**
-   - 点击"Save & Test"
-   - 应显示"Data source is working"
+**前置准备**: 把成品充好电；准备好演示用的 PPT 或口头提纲。
 
 ---
 
-### 任务9.5: 创建仪表盘 (60分钟)
-
-**创建监测面板:**
-
-1. **新建仪表盘**
-   - Create → Dashboard
-   - "Add visualization"
-
-2. **温度面板**
-   ```
-   标题: 温度趋势 (°C)
-   可视化: Time series
-   
-   Query:
-   from(bucket: "sensors")
-     |> range(start: v.timeRange)
-     |> filter(fn: (r) => r._measurement == "sensor_reading")
-     |> filter(fn: (r) => r._field == "temperature")
-     |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
-   
-   右侧配置:
-   - Unit: Temperature → Celsius (°C)
-   - Min: 0
-   - Max: 40
-   - Alert: >30°C 警告
-   ```
-
-3. **PM2.5面板**
-   ```
-   标题: PM2.5 浓度 (μg/m³)
-   可视化: Time series
-   
-   Query:
-   from(bucket: "sensors")
-     |> range(start: v.timeRange)
-     |> filter(fn: (r) => r._measurement == "sensor_reading")
-     |> filter(fn: (r) => r._field == "pm25")
-     |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)
-   
-   右侧配置:
-   - Unit: Short
-   - 阈值:
-     * 绿色: 0-35
-     * 黄色: 35-75
-     * 红色: >75
-   ```
-
-4. **湿度面板**
-   ```
-   标题: 湿度 (%)
-   可视化: Gauge
-   
-   Query:
-   from(bucket: "sensors")
-     |> range(start: v5m)
-     |> filter(fn: (r) => r._measurement == "sensor_reading")
-     |> filter(fn: (r) => r._field == "humidity")
-     |> last()
-   
-   右侧配置:
-   - Min: 0
-   - Max: 100
-   - 阈值:
-     * 舒适: 40-60%
-   ```
-
-5. **多值统计面板**
-   ```
-   标题: 实时数据统计
-   可视化: Stat
-   
-   Query: 添加多个查询
-   - 温度最新值
-   - 湿度最新值
-   - PM2.5最新值
-   ```
-
-6. **保存仪表盘**
-   - 右上角"Save dashboard"
-   - 名称: "Air Butler Monitor"
-
----
-
-## 🧪 练习: 高级可视化 | Practice: Advanced Visualization
-
-### 任务9.6: 创建高级面板 (30分钟)
-
-**1. 空气质量评分面板:**
-
-```
-可视化: Stat
-计算AQI:
-from(bucket: "sensors")
-  |> range(start: v.timeRange)
-  |> filter(fn: (r) => r._measurement == "sensor_reading")
-  |> filter(fn: (r) => r._field == "pm25")
-  |> map(fn: (r) => ({
-      r with
-      _value: if r._value <= 35 then 50
-              else if r._value <= 75 then 100
-              else if r._value <= 115 then 150
-              else 200
-    }))
-  |> last()
-```
-
-**2. 数据表格面板:**
-
-```
-可视化: Table
-显示最近10条记录
-```
-
-**3. 告警配置:**
-
-```
-Alert规则:
-- PM2.5 > 75 → 发送邮件
-- 温度 > 30 → 发送通知
-```
-
----
-
-## 📝 今日作业 | Today's Assignment
-
-### 基础作业 (必做)
-
-1. **完整可视化系统**  
-   - InfluxDB正常写入数据
-   - Grafana显示所有传感器
-   - 仪表盘包含至少4个面板
-
-2. **数据验证**  
-   - 对比ESP32显示和Grafana显示
-   - 验证数据一致性
-   - 测试历史数据查询
-
-3. **回答问题**  
-   - 时序数据库适合什么场景?
-   - Grafana的优势是什么?
-   - 什么是聚合窗口(aggregateWindow)?
-
-### 进阶作业 (选做)
-
-1. 实现: 告警通知(邮件/Webhook)
-2. 研究: Grafana变量与模板化
-3. 思考: 如何优化长期存储性能?
-
----
-
-## 📚 参考资源 | References
-
-- [InfluxDB文档](https://docs.influxdata.com/)
-- [Grafana文档](https://grafana.com/docs/)
-- [Flux查询语言](https://docs.influxdata.com/flux/v0.x/)
-
----
-
-## 🔮 明日预告 | Tomorrow's Preview
-
-**Day 10: 硬件整合与外壳设计**
-
-- 电路整理与焊接入门
-- 3D打印/激光切割外壳
-- 传感器校准
-- 产品化组装
-
-**前置准备:**
-- 准备焊接工具(如有)
-- 设计外壳草图
-
----
-
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+*最后更新: 2026-06 | Last updated: 2026-06*

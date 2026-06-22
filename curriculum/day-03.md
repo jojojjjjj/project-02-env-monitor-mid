@@ -1,456 +1,274 @@
-# Day 3: UART通信与PM2.5传感器 | UART Communication & PM2.5 Sensor
+# Day 3: SHT31 温湿度传感器 —— I2C 原理 + 接线 + 读数值 | SHT31 Sensor: I2C + Wiring + Reading Values
 
-> **今日目标 (Today's Goals):**
-> - 理解UART串行通信协议
-> - 学会解析传感器数据帧
-> - 成功读取PM2.5和PM10数据
-> - 计算空气质量指数(AQI)
->
-> **产出 (Deliverable):** 能读取并显示PM2.5数据的完整程序
+> **学习目标 | Learning Objectives**
+> - 理解 I2C 总线协议：为什么两根线能挂多个设备、SCL/SDA/地址/ACK 各是什么
+> - 把 SHT31 接到 KE1 板的 PB13/PB14（硬件 I2C2），理解为什么需要上拉电阻
+> - 烧录 UP主提供的 SHT31 驱动，串口打印真实的温度湿度数值
+> - 理解 CRC 校验和 SHT31 的「周期测量模式」
 
----
-
-## 🕒 时间安排 | Schedule
-
-| 时间 | 活动类型 | 内容 |
-|------|---------|------|
-| 9:00-10:30 | 讲座 | UART协议原理与数据帧结构 |
-| 10:45-12:00 | 实践 | PMS5003传感器连接 |
-| 13:30-15:00 | 实践 | UART数据读取与解析 |
-| 15:15-16:30 | 练习 | AQI计算与健康建议 |
-| 16:30-17:00 | 总结 | 作业布置与Q&A |
+> **产出 | Deliverable**: 串口稳定每秒打印一行 `T=25.43'C H=58.20%`，用手捂传感器能看到温度上升
 
 ---
 
-## 📖 上午: UART协议原理 | Morning: UART Protocol
+## 一、前置检查 | Pre-flight Checklist
 
-### 为什么要学UART? | Why Learn UART?
-
-**真实应用场景:**
-- GPS模块接收卫星数据(NMEA协议)
-- 蓝牙模块与MCU通信
-- 激光雷达传输点云数据
-- 工业PLC与传感器网络
-
-**UART vs I2C:**
-
-| 特性 | UART | I2C |
-|------|------|-----|
-| 线缆数量 | 2根(TX/RX) | 2根(SDA/SCL) |
-| 速度 | 较高(可达Mbps) | 较低(通常400kHz) |
-| 设备数量 | 点对点 | 多主多从 |
-| 复杂度 | 简单 | 较复杂 |
-| 典型应用 | GPS、蓝牙 | 传感器网络 |
-
-> **Real-world Applications:**
-> - GPS modules receiving satellite data (NMEA protocol)
-> - Bluetooth modules communicating with MCUs
-> - Lidar transmitting point cloud data
-> - Industrial PLCs and sensor networks
->
-> **UART vs I2C:** UART is faster and simpler, I2C supports multiple devices
+- [ ] Day 2 的点灯 + printf 已跑通（串口能看到 `tick`）
+- [ ] 手上有 SHT31 模块（4 针：VCC/GND/SCL/SDA）+ 4 根母对母杜邦线
+- [ ] 工程里已经能 `printf`（USART1 调试串口就绪）
 
 ---
 
-### 任务3.1: UART协议基础 (40分钟)
+## 二、I2C 协议原理 —— 两根线挂一堆设备 | I2C Protocol: Many Devices on Two Wires
 
-**UART通信原理:**
+### 2.1 I2C 是什么
+
+I2C（读作 "I-squared-C"）= Inter-Integrated Circuit，飞利浦发明的两线制串行总线。**两根线**：
+
+- **SCL**（Serial Clock）：时钟线，主控拉节奏
+- **SDA**（Serial Data）：数据线，双向传数据
+
+**一根总线可以挂多个设备**（SHT31、OLED、MPU6050……都挂在同一对 SCL/SDA 上），靠**设备地址**区分。这就是 I2C 最大的优点——省引脚。
+
+> **WHY I2C not SPI/UART for sensors?** SPI 要 4 根线+每个从设备一根片选，挂多了引脚爆炸；UART 是点对点，挂不了多个。I2C 两根线挂一堆，是传感器的首选。
+
+### 2.2 开漏 + 上拉（I2C 最关键的概念，讲 WHY）
+
+I2C 的 SCL/SDA 必须配置成**开漏 (Open-Drain)** + 外接**上拉电阻 (通常 4.7kΩ)**。为什么这么反常？
+
+因为 I2C 是**多设备共享总线**，如果两个设备同时驱动同一根线——一个拉高一个拉低——会短路烧芯片。开漏输出的特点是：
+
+- 任何设备只能把线**拉低 (0)**，或**松手 (高阻态)**
+- 没人拉低时，上拉电阻把线**拉回高 (1)**
+
+这样即使多个设备「同时发言」，线也只是被拉低，不会短路。这叫**线与 (wired-AND)**。
+
+> **WHY external pull-up?** 开漏自己拉不回高，必须靠上拉电阻。SHT31/OLED 模块通常板载了 4.7kΩ 上拉，所以你直接接 VCC/GND/SCL/SDA 就能跑。如果总线上挂多个模块，上拉电阻会并联变小（4.7k//4.7k≈2.35k），一般没事，挂超过 4-6 个才可能出问题。
+
+### 2.3 I2C 一次通信的时序
+
+主控要读 SHT31，大致这样：
 
 ```
-发送端(TX) ─────────────→ 接收端(RX)
-   ESP32                   PMS5003
-   (RX ←── TX)             (TX ─→ RX)
+主控: [START] [地址+W]      [CMD高] [CMD低]     [RESTART] [地址+R]           [NACK/STOP]
+从机:                  [ACK]         [ACK] [ACK]                   [ACK][数据][ACK]...
 ```
 
-**关键参数:**
+- **START**: SCL 高时 SDA 由高变低（特殊信号，告诉所有从机「开始了」）
+- **地址+W/R**: 7 位地址 + 1 位方向（0=写，1=读）。SHT31 地址是 `0x44`，写时发 `0x88`，读时发 `0x89`（地址左移 1 位 + 方向位）
+- **ACK**: 每发完 1 字节，接收方拉低 SDA 一个周期表示「收到了」
+- **STOP**: SCL 高时 SDA 由低变高，结束
 
-| 参数 | 说明 | 本项目值 |
-|------|------|---------|
-| **波特率** | 数据传输速度 | 9600 bps |
-| **数据位** | 每帧数据位数 | 8位 |
-| **停止位** | 帧结束标志 | 1位 |
-| **校验位** | 错误检测 | 无 |
+> **WHY 7-bit address shifted?** STM32 HAL 的 `HAL_I2C_Master_Transmit` 第二个参数 `DevAddress` 要的是**已经左移 1 位的 8 位地址**（低 1 位是 R/W）。SHT31 的 7 位地址 `0x44` → 写地址 `0x44<<1 = 0x88`，读地址 `0x88|0x01 = 0x89`。KE1 源码 `sht3x.h` 里 `SHT30_ADDR_WR 0x88 / SHT30_ADDR_RD 0x89` 就是这么来的——这是第一个真实代码点。
 
-**数据帧格式:**
-```
-[起始位][D0][D1][D2][D3][D4][D5][D6][D7][停止位]
-  0      1   0   1   1   0   0   1   0    1
-```
+### 2.4 I2C 在 STM32L433 上的两种实现
 
-**为什么需要TX/RX交叉连接?**  
-因为一方的发送(TX)要连接到另一方的接收(RX)。
+| 方式 | 说明 | KE1 用在哪 |
+|------|------|-----------|
+| **硬件 I2C**（I2C1/2/3 外设） | 有专用寄存器，HAL 库封装好，稳定快 | **I2C2 (PB13/PB14) 连 SHT31** |
+| **软件 I2C**（GPIO 模拟） | 任意两个 GPIO 手动拉时序，灵活但慢 | **PB8/PB9 连 OLED**（Day 4） |
 
-> **Why cross-connect TX/RX?**  
-> Because one side's transmit (TX) must connect to the other side's receive (RX).
+> **WHY both?** UP主的 KE1 例程里，SHT31 走硬件 I2C2（准、省 CPU），OLED 走软件 I2C（因为 OLED 库是从老代码移植的软件 I2C 版本，且和 SHT31 分开避免时序互扰）。我们复刻，照搬即可。
 
 ---
 
-### 任务3.2: PMS5003数据帧解析 (30分钟)
+## 三、接线 —— SHT31 接到 I2C2 | Wiring SHT31 to I2C2
 
-**PMS5003协议特点:**
+### 3.1 接线表
 
-| 特性 | 说明 |
-|------|------|
-| **波特率** | 9600 bps |
-| **数据格式** | 二进制，32字节/帧 |
-| **更新频率** | 约1秒/次 |
-| **输出内容** | PM1.0, PM2.5, PM10 |
+| SHT31 模块 | KE1 板引脚 | 说明 |
+|-----------|-----------|------|
+| VCC | 3.3V | **绝对不能接 5V**（SHT31 3.3V 供电；KE1 的 GPIO 也是 3.3V 电平） |
+| GND | GND | 共地 |
+| SCL | PB13 | I2C2_SCL（CubeMX 里要配成 I2C2_SCL 复用） |
+| SDA | PB14 | I2C2_SDA |
 
-**数据帧结构:**
-```
-字节  0-1: 起始字节 (0x42, 0x4D)
-字节  2-3: 帧长度 (0x00, 0x1C = 28字节)
-字节  4-5: PM1.0 标准浓度 (μg/m³)
-字节  6-7: PM2.5 标准浓度 (μg/m³)
-字节  8-9: PM10 标准浓度 (μg/m³)
-字节10-11: PM1.0 大气浓度
-字节12-13: PM2.5 大气浓度
-字节14-15: PM10 大气浓度
-...
-字节30-31: 校验和
-```
+### 3.2 在 CubeMX 里配置 I2C2
 
-**校验和计算:**
-```python
-checksum = sum(字节0到字节29) & 0xFFFF
-if checksum == (字节30 << 8) | 字节31:
-    数据有效
-```
+1. 打开工程的 `.ioc`，在引脚图点 PB13 → 选 `I2C2_SCL`，PB14 → `I2C2_SDA`。
+2. 左侧 `Connectivity → I2C2`，Mode 选 `I2C`，参数默认（Speed Mode 选 Standard 100kHz 或 Fast 400kHz 都行，SHT31 支持 1MHz，我们用 100kHz 稳妥）。
+3. `Generate Code`。
 
-**为什么需要校验和?**  
-防止传输错误导致数据异常(如PM2.5=9999)。
-
-> **Why need checksum?**  
-> To prevent data anomalies from transmission errors (e.g., PM2.5=9999).
+> **检查点 3.1**: Generate 后 `i2c.c` 里应该有 `MX_I2C2_Init()`，`hi2c2.Instance = I2C2`。和参考源码 `inspect/nbth/KE1_IoT/Core/Src/i2c.c` 对比，引脚和时钟配置要一致。
 
 ---
 
-## 💻 下午: PMS5003传感器实践 | Afternoon: PMS5003 Practice
+## 四、烧录 UP主提供的 SHT31 驱动 | Flashing the Provided SHT31 Driver
 
-### 任务3.3: PMS5003硬件连接 (30分钟)
+复刻模式的核心来了：**驱动代码已经写好，在 `software/src/sht31.c` 和 `i2c.c`**。你不用写，你要读懂 + 接对线 + 烧进去。
 
-**PMS5003引脚说明:**
+### 4.1 把驱动文件加进工程
 
-| 引脚 | 功能 | 连接到ESP32 |
-|------|------|-------------|
-| VCC | 电源(5V) | VIN (5V) |
-| GND | 地 | GND |
-| TX | 发送 | GPIO16 (RX2) |
-| RX | 接收 | 不连接(只读) |
-| SET | 设置 | 不连接或接3.3V |
+1. 把 `software/src/sht3x.h` 复制到工程的 `Core/Inc/`。
+2. 把 `software/src/i2c.c` 里 `/* USER CODE BEGIN 1 */` 之后那段 SHT31 驱动函数（`CheckCrc8` / `i2c_write_cmd` / `KE1_I2C_SHT31_Init` / `KE1_I2C_SHT31`）复制到你自己工程 `i2c.c` 的 `USER CODE BEGIN 1` 区。
+3. `#include "sht3x.h"` 加到 `i2c.c` 顶部 USER CODE 区。
 
-**⚠️ 重要提示:**
-- PMS5003需要5V供电!
-- TX/RX必须交叉连接
-- ESP32的RX2是GPIO16
+### 4.2 读懂驱动（讲 WHY，每个函数干嘛）
 
-**接线图:**
-```
-PMS5003         ESP32
-────────────────────────
-VCC (红)   →    VIN (5V)
-GND (黑)   →    GND
-TX  (绿)   →    GPIO16 (RX2)
-RX  (黄)   →    (不连接)
-SET        →    (不连接)
+打开参考源码 `i2c.c`，我们逐个看：
+
+**(1) CRC8 校验** —— SHT31 每个测量值后面跟一个 CRC 字节，防止数据传输出错：
+
+```c
+uint8_t CheckCrc8(uint8_t* message, uint8_t initial_value) {
+    // 多项式 0x31，标准 CRC-8，Sensirion 官方算法
+    ...
+}
 ```
 
-**接线步骤:**
+> **WHY CRC?** I2C 上如果有干扰，数据位可能翻转。CRC 校验失败就丢弃这次读数，保证你看到的温湿度是真的。真实工程几乎都有 CRC。
 
-1. **断开ESP32电源** (防止短路)
-2. **连接电源线** (VCC和GND)
-3. **连接信号线** (TX到GPIO16)
-4. **检查连接** (用万用表测试)
-5. **上电测试** (观察PMS5003风扇是否转动)
+**(2) 写命令** —— SHT31 的命令是 16 位（两个字节的「指令码」），比如软复位 `0x30A2`：
 
-**预期结果:**
-- PMS5003风扇开始转动
-- 无冒烟或发热现象
-- 连接牢固无松动
-
-**常见问题:**
-- Q: 风扇不转?  
-  A: 检查5V供电，确认VCC接到VIN
-- Q: 发热严重?  
-  A: 立即断电，检查是否有短路
-
----
-
-### 任务3.4: UART数据读取 (60分钟)
-
-**步骤:**
-
-1. **编写UART读取程序**
-   ```python
-   from machine import UART, Pin
-   import time
-
-   # 初始化UART (波特率9600, RX=GPIO16)
-   uart = UART(2, baudrate=9600, rx=16, tx=17, timeout=1000)
-
-   # 数据缓冲区
-   buffer = bytearray(32)
-
-   print("PMS5003 PM2.5传感器读取")
-   print("=" * 40)
-
-   while True:
-       # 等待数据
-       if uart.any():
-           # 读取数据
-           uart.readinto(buffer, 32)
-           
-           # 检查起始字节
-           if buffer[0] == 0x42 and buffer[1] == 0x4D:
-               # 计算校验和
-               checksum = sum(buffer[0:30]) & 0xFFFF
-               received_checksum = (buffer[30] << 8) | buffer[31]
-               
-               if checksum == received_checksum:
-                   # 解析数据
-                   pm25_standard = (buffer[6] << 8) | buffer[7]
-                   pm10_standard = (buffer[8] << 8) | buffer[9]
-                   pm25_atmospheric = (buffer[12] << 8) | buffer[13]
-                   
-                   # 打印结果
-                   print(f"PM2.5: {pm25_standard} μg/m³")
-                   print(f"PM10:  {pm10_standard} μg/m³")
-                   print(f"PM2.5(大气): {pm25_atmospheric} μg/m³")
-                   print("-" * 40)
-               else:
-                   print("校验和错误!")
-           else:
-               print("帧头错误!")
-       
-       time.sleep(1)
-   ```
-
-2. **优化读取逻辑**
-   ```python
-   def read_pm_sensor(uart, timeout_ms=5000):
-       """读取PM传感器数据，带超时"""
-       start_time = time.ticks_ms()
-       buffer = bytearray(32)
-       
-       while time.ticks_diff(time.ticks_ms(), start_time) < timeout_ms:
-           if uart.any() >= 32:
-               uart.readinto(buffer, 32)
-               
-               # 验证帧
-               if buffer[0] == 0x42 and buffer[1] == 0x4D:
-                   checksum = sum(buffer[0:30]) & 0xFFFF
-                   received = (buffer[30] << 8) | buffer[31]
-                   
-                   if checksum == received:
-                       return {
-                           "pm25": (buffer[6] << 8) | buffer[7],
-                           "pm10": (buffer[8] << 8) | buffer[9],
-                           "valid": True
-                       }
-       
-       return {"valid": False}
-   ```
-
-**预期结果:**
-- 每秒显示一次PM2.5和PM10数据
-- PM2.5通常在10-100μg/m³范围
-- 无校验和错误
-
-**常见问题:**
-- Q: 读不到数据?  
-  A: 检查TX是否连接到RX2(GPIO16)
-- Q: 频繁出现校验和错误?  
-  A: 可能是波特率不匹配或接触不良
-
----
-
-## 🧪 练习: AQI计算 | Practice: AQI Calculation
-
-### 任务3.5: 空气质量指数计算 (30分钟)
-
-**为什么要计算AQI?**  
-PM2.5的原始数值(μg/m³)不直观，AQI将数据转换为0-500的健康指数。
-
-> **Why calculate AQI?**  
-> Raw PM2.5 values (μg/m³) are not intuitive. AQI converts data to a 0-500 health index.
-
-**AQI计算公式:**
-```python
-def calculate_aqi_pm25(pm25):
-    """根据PM2.5计算AQI"""
-    
-    # AQI分段
-    if pm25 <= 35:
-        # 优
-        aqi = (50 / 35) * pm25
-        level = "优"
-        color = "绿色"
-    elif pm25 <= 75:
-        # 良
-        aqi = 50 + (50 / 40) * (pm25 - 35)
-        level = "良"
-        color = "黄色"
-    elif pm25 <= 115:
-        # 轻度污染
-        aqi = 100 + (50 / 40) * (pm25 - 75)
-        level = "轻度污染"
-        color = "橙色"
-    elif pm25 <= 150:
-        # 中度污染
-        aqi = 150 + (50 / 35) * (pm25 - 115)
-        level = "中度污染"
-        color = "红色"
-    elif pm25 <= 250:
-        # 重度污染
-        aqi = 200 + (100 / 100) * (pm25 - 150)
-        level = "重度污染"
-        color = "紫色"
-    else:
-        # 严重污染
-        aqi = 300 + (100 / 150) * (pm25 - 250)
-        level = "严重污染"
-        color = "褐红色"
-    
-    return int(aqi), level, color
-
-# 使用示例
-pm25_value = 45
-aqi, level, color = calculate_aqi_pm25(pm25_value)
-print(f"PM2.5: {pm25_value} μg/m³")
-print(f"AQI: {aqi} ({level})")
-print(f"等级颜色: {color}")
+```c
+HAL_StatusTypeDef i2c_write_cmd(uint16_t cmd) {
+    uint8_t cmd_buff[2] = { cmd>>8, cmd };  // 高字节在前
+    return HAL_I2C_Master_Transmit(&hi2c2, SHT30_ADDR_WR, cmd_buff, 2, 0xffff);
+}
 ```
 
-**健康建议系统:**
-```python
-def get_health_advice(aqi_level):
-    """根据AQI等级给出健康建议"""
-    
-    advice = {
-        "优": "空气很好，适合户外活动",
-        "良": "空气质量可接受，正常活动",
-        "轻度污染": "敏感人群减少户外活动",
-        "中度污染": "减少户外活动，佩戴口罩",
-        "重度污染": "避免户外活动，关闭门窗",
-        "严重污染": "所有人避免户外活动"
+**(3) 初始化** —— 软复位 + 设为周期测量模式（每秒测 2 次，中等精度）：
+
+```c
+HAL_StatusTypeDef KE1_I2C_SHT31_Init() {
+    i2c_write_cmd(CMD_SOFT_RESET);    // 0x30A2 复位
+    HAL_Delay(25);
+    i2c_write_cmd(CMD_MEAS_PERI_2_M); // 0x2220 周期 2mps 中精度
+    HAL_Delay(25);
+}
+```
+
+> **WHY periodic mode not single-shot?** 周期模式让 SHT31 自己在后台每 0.5 秒测一次，主控要的时候 `CMD_FETCH_DATA` 拿最新结果即可，不阻塞。比每次都发测量命令等 15ms 高效。
+
+**(4) 读温湿度** —— 发 fetch 命令 → 收 6 字节 → CRC 校验 → 换算：
+
+```c
+int KE1_I2C_SHT31(float *pfTemp, float *pfHumi) {
+    uint8_t read_buff[6] = {0};
+    i2c_write_cmd(CMD_FETCH_DATA);  // 0xE000 取周期模式结果
+    HAL_I2C_Master_Receive(&hi2c2, SHT30_ADDR_RD, read_buff, 6, 0xffff);
+    // 6 字节 = [T高,T低,T的CRC, H高,H低,H的CRC]
+    if (CheckCrc8(read_buff, 0xFF) != read_buff[2] ||
+        CheckCrc8(&read_buff[3], 0xFF) != read_buff[5]) return HAL_ERROR;
+    uint16_t t = (read_buff[0]<<8) | read_buff[1];
+    *pfTemp = -45 + 175 * (t / 65535.0f);   // 官方换算公式
+    uint16_t h = (read_buff[3]<<8) | read_buff[4];
+    *pfHumi = 100 * (h / 65535.0f);
+    return HAL_OK;
+}
+```
+
+> **WHY that formula?** SHT31 输出 16 位原始值 (0~65535)，线性映射到物理量：温度 -45~130°C，湿度 0~100%。公式来自 Sensirion 数据手册，背下来没意义，知道「原始 16 位 → 物理值」是线性映射即可。
+
+### 4.3 在 main 里调用
+
+`main.c` 的 `USER CODE BEGIN 2`（初始化区）：
+
+```c
+/* USER CODE BEGIN 2 */
+printf("SHT31 demo start\r\n");
+if (KE1_I2C_SHT31_Init() != HAL_OK) {
+    printf("SHT31 init FAIL! check wiring\r\n");
+} else {
+    printf("SHT31 init OK\r\n");
+}
+/* USER CODE END 2 */
+```
+
+`USER CODE BEGIN WHILE`（主循环）：
+
+```c
+/* USER CODE BEGIN WHILE */
+float t = 0, h = 0;
+while (1)
+{
+    if (KE1_I2C_SHT31(&t, &h) == HAL_OK) {
+        printf("T=%.2f'C H=%.2f%%\r\n", t, h);
+    } else {
+        printf("read fail (CRC or I2C)\r\n");
     }
-    
-    return advice.get(aqi_level, "未知等级")
-
-# 使用
-advice = get_health_advice(level)
-print(f"健康建议: {advice}")
+    HAL_Delay(1000);
+    /* USER CODE END WHILE */
+}
 ```
 
----
+### 4.4 编译烧录，看结果
 
-### 任务3.6: 综合监测程序 (30分钟)
+串口助手 115200 打开，应该每秒一行：
 
-**整合BME680和PMS5003:**
-
-```python
-from machine import Pin, I2C, UART
-import bme680
-import time
-
-# 初始化I2C和传感器
-i2c = I2C(0, scl=Pin(22), sda=Pin(21))
-bme = bme680.BME680_I2C(i2c=i2c)
-
-# 初始化UART
-uart = UART(2, baudrate=9600, rx=16, tx=17)
-
-# AQI计算函数(从上面复制)
-def calculate_aqi_pm25(pm25):
-    # ... (代码同上)
-    pass
-
-# 主循环
-print("环境监测站启动...")
-print("=" * 50)
-
-while True:
-    try:
-        # 读取BME680
-        bme.get_sensor_data()
-        temp = bme.data.temperature
-        hum = bme.data.humidity
-        pres = bme.data.pressure
-        
-        # 读取PMS5003
-        pm_data = read_pm_sensor(uart)
-        if pm_data["valid"]:
-            pm25 = pm_data["pm25"]
-            pm10 = pm_data["pm10"]
-            
-            # 计算AQI
-            aqi, level, color = calculate_aqi_pm25(pm25)
-            
-            # 显示完整数据
-            print(f"\n时间: {time.ticks_ms()}")
-            print(f"温度: {temp:.1f}°C | 湿度: {hum:.1f}%")
-            print(f"气压: {pres:.1f} hPa")
-            print(f"PM2.5: {pm25} μg/m³ | PM10: {pm10} μg/m³")
-            print(f"AQI: {aqi} ({level}) - {color}")
-            print("=" * 50)
-    
-    except Exception as e:
-        print(f"错误: {e}")
-    
-    time.sleep(5)
+```
+SHT31 demo start
+SHT31 init OK
+T=25.43'C H=58.20%
+T=25.41'C H=58.18%
+...
 ```
 
----
+**用手捂住 SHT31**（体温 ~36°C），温度应该缓慢上升 1-3°C，湿度也会变（手上有水汽）。这就证明读到了真实物理量。
 
-## 📝 今日作业 | Today's Assignment
-
-### 基础作业 (必做)
-
-1. **完成AQI计算器**  
-   实现完整的AQI计算函数，并测试边界值
-
-2. **对比实验**  
-   记录一整天的PM2.5数据:
-   - 早晨(8:00)
-   - 中午(12:00)
-   - 傍晚(18:00)
-   - 深夜(22:00)
-   分析变化规律
-
-3. **回答问题**  
-   - UART和I2C的主要区别是什么?
-   - 为什么PMS5003需要5V供电?
-   - PM2.5和PM10有什么区别?
-
-### 进阶作业 (选做)
-
-1. 研究: AQI的国际标准差异(中国vs美国)
-2. 实现: 数据异常检测(如PM2.5突然飙升)
-3. 思考: 如何延长传感器的使用寿命?
+> ✅ **检查点 3.2**: 温度在室温附近（20-30°C），湿度 30-70%，手捂会升 → SHT31 全链路通了。
 
 ---
 
-## 📚 参考资源 | References
+## 五、常见错误 | Common Errors
 
-- [PMS5003数据手册](https://www.alibaba.com/product-detail/PMS5003-PMS5003-PM2-5-laser_1600101936536.html)
-- [AQI计算标准](http://www.mee.gov.cn/)
-- [MicroPython UART文档](https://docs.micropython.org/en/latest/esp32/quickref.html#uart-serial-bus)
-
----
-
-## 🔮 明日预告 | Tomorrow's Preview
-
-**Day 4: OLED显示屏与数据可视化**
-
-- 学习SSD1306 OLED驱动
-- 在屏幕上显示文字和图形
-- 创建实时监测界面
-- 设计美观的数据布局
-
-**前置准备:**
-- 了解屏幕分辨率概念
-- 思考: 如何在有限空间显示更多信息?
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| `SHT31 init FAIL` | 接线错 / 没接上拉 / VCC 没接 | 检查 4 根线；模块板载有上拉则别重复加；确认 3.3V |
+| 一直读到 `T=-45.00 H=0.00` | I2C 收到全 0 → 地址错 / SCL/SDA 接反 | 确认 `SHT30_ADDR_WR=0x88`；检查 PB13 是 SCL、PB14 是 SDA |
+| 一直 `read fail (CRC)` | 接线接触不良 / 上拉太弱 / 线太长 | 换短杜邦线；加一个 4.7kΩ 上拉到 3.3V |
+| 温度一直是固定值如 `T=25.00` | 周期模式没启动 / 没 delay | 确认 `KE1_I2C_SHT31_Init` 里 `CMD_MEAS_PERI_2_M` 发了，且后面有 25ms delay |
+| 数值乱跳（忽高忽低） | 电源不稳 / SDA/SCL 串扰 | VCC 加个 0.1μF 去耦电容；线别绕一起 |
+| 编译报错 `hi2c2 undeclared` | `i2c.c` 没引用到 `hi2c2` | 确认 `#include "i2c.h"` 在前 |
 
 ---
 
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+## 六、调试技巧 | Debugging Tips
+
+1. **I2C 扫描器**: 怀疑地址不对？写个循环 `for(addr=1; addr<128; addr++)` 用 `HAL_I2C_IsDeviceReady(&hi2c2, addr<<1, 3, 100)` 扫，能应答的地址就是接上的设备。SHT31 应该在 `0x44`。
+2. **先读寄存器再读数据**: 串口打印 `read_buff[0..5]` 的原始 hex，对照「T高T低CRC H高H低CRC」看，数据合理再信公式。
+3. **I2C 卡死怎么办**: STM32 的 I2C 有「总线锁死」老毛病——如果上次通信中途复位，从机可能一直拉低 SDA。解决：上电时把 SCL 手动 toggle 9-16 次（用 GPIO 模拟）释放总线。HAL 没现成函数，参考 `hardware/troubleshooting.md`。
+4. **示波器/逻辑分析仪**: ¥30 的 USB 逻辑分析仪 + PulseView 软件，能直接抓 I2C 波形看 START/ACK/数据，I2C 调试终极武器。
+5. **用 `HAL_I2C_Master_Transmit` 的返回值**: 它返回 `HAL_OK/HAL_ERROR/HAL_BUSY/HAL_TIMEOUT`。每次都检查返回值并 `printf` 出来，比啥都不查强一百倍。
+
+---
+
+## 七、今日检查点 | Day 3 Checkpoints
+
+- [ ] 能讲清楚 I2C 为什么用开漏+上拉（「线与」概念）
+- [ ] SHT31 接好，`KE1_I2C_SHT31_Init()` 返回 `HAL_OK`
+- [ ] 串口每秒打印 `T=xx.xx'C H=xx.xx%`，数值合理
+- [ ] 手捂传感器，温度能上升
+- [ ] 能指出 `0x88` 是怎么从 `0x44` 来的（7 位地址左移 1 位）
+- [ ] 截图存档：串口温湿度输出 + 手捂前后对比
+
+---
+
+## 八、今日作业 | Homework
+
+1. **数据记录**: 让程序跑 10 分钟，记录每分钟一条温湿度到 `week-1-checkin.md` 的表格里。观察室温波动范围。
+2. **改刷新率**: 把 `HAL_Delay(1000)` 改成 `5000`（5 秒一次），看 SHT31 周期模式是否还是准的。
+3. **加异常处理**: 当 `KE1_I2C_SHT31` 连续返回 `HAL_ERROR` 3 次，串口打印 `SENSOR LOST` 并点亮板载 LED 报警。
+4. **回答**:
+   - I2C 的 SCL 和 SDA 各是什么作用？为什么可以多设备共用？
+   - SHT31 地址 0x44，为什么 HAL 函数里传 0x88？
+   - CRC 校验失败为什么要丢弃这次读数，不能凑合用？
+5. **Git 提交**:
+   ```bash
+   git add curriculum/day-03.md
+   git commit -m "day03: SHT31 I2C driver, reading temp/humidity"
+   ```
+
+---
+
+## 九、明日预告 | Tomorrow
+
+**Day 4: OLED 显示 —— SSD1306 + 显示温湿度**
+- 把温湿度从串口搬到 OLED 屏幕上
+- SSD1306 显示原理（页/列、字模、软件 I2C）
+- 烧 UP主的 OLED 驱动，屏幕显示「温度 湿度」
+
+**前置准备**: 找到 SSD1306 OLED 模块（4 针 I2C 版），4 根杜邦线。
+
+---
+
+*最后更新: 2026-06 | Last updated: 2026-06*

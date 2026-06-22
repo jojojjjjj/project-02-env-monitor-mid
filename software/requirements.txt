@@ -1,30 +1,17 @@
-# requirements.txt - Python依赖包
-# Python Dependencies for Server Side
+# requirements.txt — 温湿度网络时钟 工具链依赖
+# WiFi Temp/Humidity Network Clock — Toolchain Requirements
+#
+# 本项目是 STM32 固件 (C/HAL), 不是 Python 项目。本文件按 repo 惯例列出
+# 构建烧录所需的工具链 + 测试所需 Python 包 (一行一个, 带版本)。
+# 复刻自 Bilibili 视频 BV1tb4y1U7Du (UP主: 乐在程上)。
 
-# MQTT客户端
-paho-mqtt==1.6.1
+# === STM32 构建工具链 ===
+STM32CubeIDE>=1.6.1            # 集成开发环境 (含 GCC arm-none-eabi 交叉编译器 + 烧录器), 打开 env_clock 工程 Build 即可
+STM32CubeL4-HAL>=1.16.0        # STM32L4 HAL 固件包 (CubeIDE 自带, 也可单独下载)
+STM32CubeProgrammer>=2.8.0     # 烧录工具 (ST-Link/USB), CubeIDE 自带, 也可独立安装
 
-# JSON处理
-ujson==5.7.0
+# === ESP8266 AT 固件烧录 (ESP-01S 出厂已带 AT 固件, 一般无需重刷) ===
+esptool>=4.6.2                 # 若需重刷 ESP8266 AT 固件用: pip install esptool
 
-# 环境变量
-python-dotenv==1.0.0
-
-# InfluxDB客户端
-influxdb-client==1.38.0
-
-# 配置管理
-pyyaml==6.0
-
-# 日志
-colorlog==6.7.0
-
-# 时间处理
-python-dateutil==2.8.2
-
-# 数据处理
-pandas==2.0.3
-
-# Web框架(可选)
-flask==2.3.2
-flask-cors==4.0.0
+# === Python 串口测试 (tests/test_basic.py) ===
+pyserial>=3.5                  # 串口库: pip install pyserial, 用于跑 tests/test_basic.py 验证时钟输出

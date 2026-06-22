@@ -1,448 +1,255 @@
-# Day 2: MicroPython基础与I2C通信 | MicroPython Basics & I2C Communication
+# Day 2: 第一个程序 —— 点灯 + 串口 printf + 烧录流程 | First Program: Blink + UART printf + Flashing
 
-> **今日目标 (Today's Goals):**
-> - 掌握MicroPython基本语法和数据结构
-> - 理解I2C通信协议原理
-> - 学会使用BME680传感器库
-> - 成功读取温湿度、气压和气体数据
->
-> **产出 (Deliverable):** 能实时读取并显示环境数据的ESP32程序
+> **学习目标 | Learning Objectives**
+> - 把昨天的 `day01_blink` 工程烧进板子，看到 LED 闪烁 + 串口打印 `tick`
+> - 理解 GPIO 输出：怎么把一个引脚变高/变低，为什么需要「推挽输出」
+> - 理解 UART 异步通信：波特率、起始位、数据位、停止位是怎么回事，为什么 `printf` 能走串口
+> - 掌握 ST-Link 烧录 + 串口助手看日志的完整调试闭环
 
----
-
-## 🕒 时间安排 | Schedule
-
-| 时间 | 活动类型 | 内容 |
-|------|---------|------|
-| 9:00-10:30 | 讲座 | MicroPython语法复习与I2C协议 |
-| 10:45-12:00 | 实践 | BME680传感器连接与驱动安装 |
-| 13:30-15:00 | 实践 | 传感器数据读取与处理 |
-| 15:15-16:30 | 练习 | 数据异常处理与校准 |
-| 16:30-17:00 | 总结 | 作业布置与Q&A |
+> **产出 | Deliverable**: 板子 LED 闪烁，串口助手稳定收到 `Hello KE1!` 和每 0.5s 一次的 `tick`
 
 ---
 
-## 📖 上午: MicroPython与I2C协议 | Morning: MicroPython & I2C Protocol
+## 一、前置检查 | Pre-flight Checklist
 
-### 为什么要学I2C? | Why Learn I2C?
-
-**真实应用场景:**
-- 智能手表读取多个传感器(心率、加速度、陀螺仪)
-- 无人机获取姿态、GPS、气压数据
-- 工业控制板读取多个温度传感器
-
-**I2C的优势:**
-- 只需2根线(SDA数据线 + SCL时钟线)
-- 可挂载127个设备
-- 广泛支持(几乎所有传感器都有I2C接口)
-
-> **Real-world Applications:**
-> - Smartwatches reading multiple sensors (heart rate, accelerometer, gyroscope)
-> - Drones getting attitude, GPS, barometric data
-> - Industrial control boards reading multiple temperature sensors
->
-> **I2C Advantages:**
-> - Only 2 wires needed (SDA data + SCL clock)
-> - Up to 127 devices on one bus
-> - Wide support (almost all sensors have I2C interface)
+- [ ] Day 1 的 `day01_blink` 工程能编译通过（0 error）
+- [ ] KE1 板插在电脑上，设备管理器有 COM 口
+- [ ] 装好一个串口助手（MobaXterm / PuTTY / 友善串口助手 任选）
+- [ ] KE1 板有板载 ST-Link（大部分 KE1 板有；若没有，准备一个外部 ST-Link V2 小板，淘宝 ¥10）
 
 ---
 
-### 任务2.1: MicroPython语法速成 (40分钟)
+## 二、GPIO 输出原理 —— 怎么点亮一个 LED | GPIO Output: Lighting an LED
 
-**核心概念回顾:**
+### 2.1 LED 电路的真相
 
-#### 1. 变量与数据类型
-```python
-# 数值型 - 用于传感器读数
-temperature = 25.5      # float
-humidity = 60           # int
-pressure = 101325       # int
+板载 LED 的接法通常是：`3.3V → LED → 限流电阻 → GPIO 引脚`（或反过来 `GPIO → 电阻 → LED → GND`）。
 
-# 字符串 - 用于设备标识
-device_id = "AIR_001"
-status = "online"
+- 当 GPIO 输出**低电平 (0)**：电流流过 LED → 亮（共阳接法）
+- 当 GPIO 输出**高电平 (3.3V)**：两端电压差为 0 → 灭
 
-# 布尔型 - 用于状态判断
-is_heating = True
-is_cooling = False
+KE1 板的 LED 具体是共阳还是共阴，看你板子原理图。**点不亮先试着 `TogglePin` 几次**——程序对，LED 接法反了，最多就是「该亮的时候灭、该灭的时候亮」，不会烧。
+
+> **WHY a current-limit resistor?** LED 是电流驱动器件，没有电阻的话电流会瞬间变大烧毁 LED 和 GPIO。板载 LED 已经焊了限流电阻，你自己外接 LED 一定要串一个 220Ω~1kΩ。
+
+### 2.2 GPIO 是什么？
+
+GPIO = General Purpose Input/Output，通用输入输出。每个 GPIO 引脚可以配置成：
+- **输出模式**：你控制它是高 (3.3V) 还是低 (0V) —— 今天用这个点亮 LED
+- **输入模式**：你读它是高还是低 —— Day 8 按键用
+- **复用功能 (AF)**：引脚交给硬件外设（USART/I2C/SPI）—— 今天 USART1 就是 AF
+
+### 2.3 推挽输出 vs 开漏输出（讲 WHY）
+
+配置 GPIO 输出时 CubeMX 给两个选项：`Push-Pull`（推挽）和 `Open-Drain`（开漏）。
+
+| 模式 | 高电平 | 低电平 | 用途 |
+|------|--------|--------|------|
+| **推挽 Push-Pull** | 主动输出 3.3V | 主动输出 0V | 驱动 LED、普通输出——**默认选这个** |
+| **开漏 Open-Drain** | 高阻态（不输出） | 主动输出 0V | I2C 总线、电平转换 |
+
+> **WHY Push-Pull for LED?** 推挽既能拉高也能拉低，驱动能力强。开漏只能拉低，拉高要靠外部上拉电阻——LED 不需要这个复杂度。**记住：普通 GPIO 输出选推挽。** Day 3 的 I2C 才会用到开漏。
+
+### 2.4 HAL 库怎么操作 GPIO
+
+```c
+// 写高
+HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+// 写低
+HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+// 翻转（取反）
+HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+// 读输入（Day 8 按键用）
+GPIO_PinState s = HAL_GPIO_ReadPin(BTN_GPIO_Port, BTN_Pin);
 ```
 
-#### 2. 列表与字典
-```python
-# 列表 - 存储时间序列数据
-readings = [25.1, 25.3, 25.2, 25.4]
-print(readings[0])      # 第一个元素
-print(len(readings))    # 长度
-print(sum(readings))    # 求和
+- `LED_GPIO_Port` 和 `LED_Pin` 是 CubeMX 根据你在 Day 1 给 PA5 起的 Label `LED` 自动生成的宏，在 `main.h` 里。
+- **HAL** = Hardware Abstraction Layer，硬件抽象层。它把「写寄存器」封装成函数，这样换芯片也能用。
 
-# 字典 - 结构化传感器数据
-sensor_data = {
-    "temp": 25.5,
-    "hum": 60,
-    "pres": 1013.25
+> **WHY HAL not bare registers?** 零基础直接读写寄存器要查 1000 页的参考手册。HAL 用函数名就能猜出意思，学习曲线平缓得多。代价是代码体积大一点、速度慢一点——这个项目完全不在乎。
+
+---
+
+## 三、UART 异步通信原理 —— printf 怎么走串口 | UART: How printf Reaches the Serial Port
+
+### 3.1 串口通信的「异步」是什么意思
+
+两根线：**TX（发送）** 和 **RX（接收）**。发送方把数据一位一位往外甩，接收方一位一位往里收。
+
+- **同步通信**（如 I2C、SPI）：有一根单独的**时钟线 (SCL/SCK)**，发送方拉一下时钟，接收方就读一下数据。两边节奏完全锁定。
+- **异步通信**（UART）：**没有时钟线**。两边事先约定好「每秒发多少位」（这就是**波特率 baud rate**），各自用自己的时钟按这个节奏发/收。
+
+> **WHY no clock line is OK?** 因为双方约定了同样的波特率（比如 115200 bit/s），接收方按这个频率采样就行。代价是：**两边波特率必须一致**，差一点就会采样错位、收到乱码。这是串口调试 90% 的问题来源。
+
+### 3.2 一个数据帧长什么样
+
+发送一个字节 `0x41`（字符 'A'，二进制 `0100 0001`）在 115200 8N1 模式下：
+
+```
+空闲 ___    START   D0 D1 D2 D3 D4 D5 D6 D7   STOP   空闲 ___
+        \___↓_____↓__↓__↓__↓__↓__↓__↓__↓__↓_____↓__________/
+          0    1   0  1  0  0  0  0  1  0    1
+       起始位   ←──── 数据位 (LSB first) ────→  停止位
+```
+
+- **起始位**：1 个低电平，告诉接收方「来了」
+- **数据位**：8 位（这就是 `8N1` 里的 `8`），低位先发
+- **校验位**：`N` = None，不要校验
+- **停止位**：1 个高电平（这就是 `1`）
+
+**115200 8N1** = 波特率 115200，8 数据位，无校验，1 停止位。这是 STM32 默认串口配置，**串口助手必须和它完全一致**才能正确收。
+
+### 3.3 为什么 `printf` 能走串口
+
+C 标准库的 `printf` 最终会调用一个底层函数 `fputc`（或 GCC 下的 `__io_putchar`）来输出一个字符。默认这个函数指向屏幕，但在嵌入式上没有屏幕，所以我们要**重定向 (retarget)** 它——让它把字符通过 `HAL_UART_Transmit` 发到 USART1。
+
+```c
+// 这就是 Day 1 抄的那段「咒语」
+PUTCHAR_PROTOTYPE
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+    return ch;
 }
-print(sensor_data["temp"])  # 访问值
 ```
 
-#### 3. 函数定义
-```python
-def celsius_to_fahrenheit(c):
-    """摄氏度转华氏度"""
-    return c * 9/5 + 32
+- `huart1` 是 USART1 的句柄（CubeMX 生成）
+- `HAL_UART_Transmit(..., 1, HAL_MAX_DELAY)` = 发 1 个字节，死等发完
+- `printf("tick\r\n")` 会逐字符调用这个函数 → 每个字符从 PA9 (USART1_TX) 发出 → USB 转串口 → 电脑串口助手显示
 
-def format_sensor_data(temp, hum, pres):
-    """格式化传感器数据"""
-    return f"T:{temp}C H:{hum}% P:{pres}hPa"
+> **WHY `\r\n` not just `\n`?** 串口助手很多按「`\r` 回车 + `\n` 换行」才正确换行。只发 `\n` 在 PuTTY 里可能不换行。养成 `\r\n` 习惯。
 
-# 使用函数
-f_temp = celsius_to_fahrenheit(25)
-print(f_temp)  # 77.0
+---
+
+## 四、烧录流程 —— 把代码塞进芯片 | Flashing: Pushing Code Into the Chip
+
+### 4.1 三种烧录方式（KE1 板常用前两种）
+
+| 方式 | 接口 | 速度 | 能调试断点 | 本课程用 |
+|------|------|------|-----------|---------|
+| **ST-Link** | SWD（SWDIO+SWCLK+GND） | 快 | ✅ 能 | ✅ 主力 |
+| **USB 虚拟串口 + ISP** | USB | 中 | ❌ | 备用（如果板子带 USB DFU） |
+| **串口 ISP（BOOT0=1）** | USART1 | 慢 | ❌ | 应急 |
+
+### 4.2 ST-Link 烧录步骤
+
+1. 确认 KE1 板的 ST-Link SWD 接线和电脑连通（板载 ST-Link 的话 USB 线就行）。
+2. CubeIDE 里右键工程 → `Run As → STM32 MCU Debug`（或点工具栏小虫子图标）。
+3. 第一次会弹出 Debug Configuration，确认 ST-LINK 被识别，点 Debug。
+4. 程序烧进去后停在 `main()` 开头，按 **F8 (Resume)** 全速运行。
+5. LED 开始闪，串口助手开始收 `tick`。
+
+> ✅ **检查点 2.1**: 看到 LED 闪烁 + 串口收到 `Hello KE1!` 和 `tick` → 烧录闭环通了。
+
+### 4.3 不调试、直接烧（更快）
+
+调试时要停下来看断点，慢。平时改完代码想快速看效果：右键工程 → `Run As → STM32 MCU C/C++ Application`（不带 Debug），直接烧录运行。
+
+---
+
+## 五、串口助手看日志 —— 你的「眼睛」 | Serial Terminal: Your Eyes
+
+嵌入式开发没有屏幕调试器，**串口 printf 是你看程序状态的唯一窗口**。今天必须熟练。
+
+### 5.1 推荐工具
+
+| 软件 | 平台 | 优点 |
+|------|------|------|
+| **MobaXterm** | Windows | 免费、多标签、SSH/串口一体 |
+| **PuTTY** | 全平台 | 极简、老牌 |
+| **友善串口助手** | Windows | 中文、能看 hex、能存日志 |
+| **VS Code + Serial Monitor 插件** | 全平台 | 写代码看日志一个窗口 |
+
+### 5.2 打开串口的正确姿势
+
+1. 波特率：**115200**（必须和程序一致）
+2. 数据位 8 / 停止位 1 / 校验 None / 流控 None（即 8N1）
+3. 选对 COM 口（Day 1 记下的那个）
+4. 点「打开串口」
+
+### 5.3 给 printf 加时间戳（实用技巧）
+
+```c
+/* USER CODE BEGIN 0 */
+#include <stdio.h>
+#include <stdarg.h>
+extern UART_HandleTypeDef huart1;
+
+void log(const char *fmt, ...) {
+    char buf[128];
+    va_list ap;
+    va_start(ap, fmt);
+    int len = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    HAL_UART_Transmit(&huart1, (uint8_t*)buf, len, HAL_MAX_DELAY);
+}
+/* USER CODE END 0 */
 ```
 
-#### 4. 错误处理
-```python
-try:
-    # 可能出错的代码
-    value = sensor.read()
-except Exception as e:
-    # 出错时的处理
-    print(f"Error: {e}")
-    value = None
-```
-
-**练习题:**
-```python
-# 1. 创建一个存储温度的列表
-temps = [22.0, 23.5, 24.0]
-
-# 2. 计算平均温度
-avg_temp = sum(temps) / len(temps)
-print(f"平均温度: {avg_temp}")
-
-# 3. 创建函数检查温度是否过高
-def is_high_temp(temp, threshold=30):
-    return temp > threshold
-
-# 4. 测试函数
-print(is_high_temp(32))  # True
-print(is_high_temp(25))  # False
-```
+调用 `log("[%lu] tick\r\n", HAL_GetTick())` —— `HAL_GetTick()` 返回开机以来毫秒数，方便看时间间隔。
 
 ---
 
-### 任务2.2: I2C协议原理 (30分钟)
+## 六、常见错误 | Common Errors
 
-**I2C基础:**
-
-```
-主设备(ESP32) ←───SDA(数据线)───→ 从设备1(BME680)
-    │                              ↓
-    └───SCL(时钟线)───→ 从设备2(OLED)
-```
-
-**关键概念:**
-
-| 概念 | 说明 |
-|------|------|
-| **主设备** | 控制通信的设备(ESP32) |
-| **从设备** | 响应主设备的设备(传感器) |
-| **地址** | 每个从设备的唯一ID(如0x76) |
-| **时钟** | 主设备提供时序信号 |
-| **起始/停止** | 标记通信开始和结束 |
-
-**通信过程:**
-1. 主设备发送起始信号
-2. 主设备发送从设备地址 + 读/写位
-3. 从设备应答(ACK)
-4. 数据传输
-5. 主设备发送停止信号
-
-**为什么不需要CS(片选)信号?**  
-因为I2C有地址机制，每个设备只响应自己的地址。
-
-> **Why no CS (chip select) signal?**  
-> Because I2C has addressing, each device only responds to its own address.
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| 烧录报错 `No ST-LINK detected` | ST-Link 驱动没装 / USB 线不行 | 重装 CubeIDE 勾 ST-LINK 驱动；换数据线 |
+| 烧录报错 `Target not connected` | SWD 接线松 / 芯片被锁 | 检查 SWDIO/SWCLK/GND；按住板子 RESET 再烧 |
+| 烧录成功但 LED 不闪 | 引脚标签 `LED` 和实际板载 LED 引脚对不上 | 查你板子原理图，改 CubeMX 引脚，重新 Generate |
+| LED 闪但串口收到乱码 | 波特率不匹配 | 串口助手改 115200；或检查 USART1 Baud Rate 配置 |
+| 串口什么都收不到 | 没重定向 `__io_putchar` / USART1 没初始化 / COM 口选错 | 回 Day 1 §5.4 检查；确认 `MX_USART1_UART_Init()` 被调用 |
+| `printf` 不换行 | 只发了 `\n` | 改成 `\r\n` |
+| 烧录后程序不跑 | BOOT0 拉高了 | 检查板子 BOOT0 跳线 = 0（正常运行模式） |
 
 ---
 
-## 💻 下午: BME680传感器实践 | Afternoon: BME680 Sensor Practice
+## 七、调试技巧 | Debugging Tips
 
-### 任务2.3: BME680硬件连接 (30分钟)
+1. **最小化问题**: LED 不亮？先写 `HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);` 写死低电平，看 LED 常亮不常亮——分离「引脚配错」和「Toggle 逻辑错」。
+2. **串口是示波器**: 怀疑某段代码跑没跑，在那段前后 `printf("A\r\n"); ... printf("B\r\n");`，看串口有没有 AB。
+3. **`HAL_GetTick()` 测时间**: 在两段代码前后读 tick，差值就是耗时毫秒数。比肉眼看准。
+4. **断点调试**: CubeIDE Debug 模式下双击代码行号设断点，运行到那里会停，鼠标悬停变量看值。**这是排查逻辑 bug 的核武器**。
+5. **复位看启动**: 串口助手开着，按板子 RESET 键，应该能看到 `Hello KE1!` 重新打印——确认程序每次上电都从头跑。
 
-**BME680引脚说明:**
+---
 
-| 引脚 | 功能 | 连接到ESP32 |
-|------|------|-------------|
-| VIN | 电源(3.3V) | 3V3 |
-| GND | 地 | GND |
-| SCL | 时钟线 | GPIO22 (I2C SCL) |
-| SDA | 数据线 | GPIO21 (I2C SDA) |
+## 八、今日检查点 | Day 2 Checkpoints
 
-**接线步骤:**
+- [ ] `day01_blink` 烧进板子，LED 闪烁
+- [ ] 串口助手 115200 8N1 打开，收到 `Hello KE1! Day 1 alive.` 和持续 `tick`
+- [ ] 能解释「为什么串口两边波特率必须一致」
+- [ ] 能解释「为什么 `printf` 要重定向 `__io_putchar`」
+- [ ] 会用 CubeIDE 断点调试（设一个断点，跑到那里停下，看变量）
+- [ ] 截图：串口助手收到 `tick` 的画面 + 板子 LED 亮着的照片，存进 week-1-checkin.md
 
-1. **准备面包板**
-   - 将ESP32插入面包板
-   - 确保USB接口朝外
+---
 
-2. **连接电源**
-   ```
-   ESP32 3V3 ────────── BME680 VIN
-   ESP32 GND ────────── BME680 GND
+## 九、今日作业 | Homework
+
+1. **改闪烁频率**: 把 `HAL_Delay(500)` 改成 `100`，观察串口 `tick` 间隔变化（应该 ~100ms）。再改回 500。
+2. **SOS 摩斯码**: 用 GPIO 写一个 SOS（三短三长三短，短=200ms，长=600ms，字母间隔 200ms），串口同步打印 `.` 和 `-`。
+3. **串口回显**: 用 `HAL_UART_Receive` 阻塞收 1 个字符，收到后立刻 `printf` 回显出来。在串口助手键盘输入，看回显。（这会用到中断，做不出就记下问题，Day 5 会系统讲。）
+4. **回答**:
+   - 推挽输出和开漏输出的区别？LED 该用哪个？
+   - 115200 8N1 各代表什么？
+   - 为什么 `printf` 默认在 STM32 上不输出？怎么解决？
+5. **Git 提交**:
+   ```bash
+   git add curriculum/day-02.md
+   git commit -m "day02: blink + uart printf + flashing flow"
    ```
 
-3. **连接I2C信号**
-   ```
-   ESP32 GPIO22 ─────── BME680 SCL
-   ESP32 GPIO21 ─────── BME680 SDA
-   ```
+---
 
-4. **检查连接**
-   - 用万用表测试连通性
-   - 确认没有短路(3V3和GND不应导通)
+## 十、明日预告 | Tomorrow
 
-**预期结果:**
-- 所有引脚正确连接
-- 无短路或接触不良
+**Day 3: SHT31 温湿度传感器 —— I2C 原理 + 接线 + 烧录驱动读数值**
+- 系统讲 I2C 协议（SCL/SDA、地址、ACK、开漏+上拉）
+- 接 SHT31 到 PB13/PB14，烧 UP主提供的驱动
+- 串口打印真实温度湿度数值，用手捂热看数值变化
 
-**常见问题:**
-- Q: 接反了会怎样?  
-  A: 可能烧毁传感器，务必确认VIN/GND
-- Q: 为什么是GPIO21/22?  
-  A: ESP32的默认I2C引脚
+**前置准备**: 把今天的板子收好；找一卷杜邦线（母对母 4 根）准备明天接 SHT31。
 
 ---
 
-### 任务2.4: 扫描I2C设备 (20分钟)
-
-**步骤:**
-
-1. **编写I2C扫描程序**
-   ```python
-   from machine import Pin, I2C
-
-   # 初始化I2C (ESP32默认引脚: SDA=21, SCL=22)
-   i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
-
-   # 扫描I2C总线上的设备
-   devices = i2c.scan()
-
-   if devices:
-       print(f"找到 {len(devices)} 个I2C设备:")
-       for device in devices:
-           print(f"  地址: 0x{device:02X}")
-   else:
-       print("未找到I2C设备!")
-       print("请检查:")
-       print("  1. 接线是否正确")
-       print("  2. 传感器是否供电")
-       print("  3. I2C引脚是否正确")
-   ```
-
-2. **运行扫描**
-   - 上传到ESP32
-   - 查看Shell输出
-   - 应该看到: `地址: 0x76` 或 `0x77`
-
-**预期结果:**
-- 找到BME680的I2C地址
-- 理解I2C设备扫描原理
-
-**常见问题:**
-- Q: 找不到设备?  
-  A: 检查接线，确认上拉电阻存在(通常集成在传感器模块)
-- Q: 地址是0x76还是0x77?  
-  A: 取决于传感器模块，两个都正常
-
----
-
-### 任务2.5: BME680传感器读取 (60分钟)
-
-**步骤:**
-
-1. **安装BME680库**
-   ```python
-   # 在Thonny中: 工具 → 管理包
-   # 搜索并安装: "bme680-micropython"
-   ```
-
-2. **编写读取程序**
-   ```python
-   from machine import Pin, I2C
-   import bme680
-   import time
-
-   # 初始化I2C
-   i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
-
-   # 创建传感器对象
-   sensor = bme680.BME680_I2C(i2c=i2c)
-
-   # 设置传感器参数
-   sensor.set_humidity_oversample(bme680.OS_2X)
-   sensor.set_pressure_oversample(bme680.OS_4X)
-   sensor.set_temperature_oversample(bme680.OS_8X)
-   sensor.set_filter(bme680.FILTER_SIZE_3)
-
-   # 主循环
-   while True:
-       try:
-           # 读取传感器数据
-           sensor.get_sensor_data()
-           
-           # 获取读数
-           temp = sensor.data.temperature
-           hum = sensor.data.humidity
-           pres = sensor.data.pressure
-           gas = sensor.data.gas_resistance
-           
-           # 打印结果
-           print(f"温度: {temp:.1f}°C")
-           print(f"湿度: {hum:.1f}%")
-           print(f"气压: {pres:.1f} hPa")
-           print(f"气体: {gas:.0f} Ω")
-           print("-" * 30)
-           
-       except OSError as e:
-           print(f"传感器读取错误: {e}")
-       
-       time.sleep(2)
-   ```
-
-3. **校准传感器**
-   ```python
-   # 海平面气压校准(根据当地海拔调整)
-   SEA_LEVEL_PRESSURE = 1013.25  # hPa
-
-   # 计算海拔(近似)
-   def calculate_altitude(pressure, sea_level=SEA_LEVEL_PRESSURE):
-       return 44330 * (1 - (pressure / sea_level) ** 0.1903)
-
-   # 使用
-   altitude = calculate_altitude(pres)
-   print(f"海拔: {altitude:.1f}米")
-   ```
-
-**预期结果:**
-- 每2秒显示一次环境数据
-- 温度在20-30°C范围
-- 湿度在30-70%范围
-- 气压在980-1040 hPa范围
-
-**常见问题:**
-- Q: 读数异常?  
-  A: 传感器需要预热，运行5分钟后稳定
-- Q: 气体电阻总是0?  
-  A: 需要等待传感器加热(约30秒)
-
----
-
-## 🧪 练习: 数据异常处理 | Practice: Error Handling
-
-### 任务2.6: 健壮的传感器读取 (30分钟)
-
-**问题:** 传感器偶尔会读失败，如何让程序不崩溃?
-
-**解决方案:**
-
-```python
-from machine import Pin, I2C
-import bme680
-import time
-
-class BME680Sensor:
-    def __init__(self, i2c):
-        self.sensor = bme680.BME680_I2C(i2c=i2c)
-        self.error_count = 0
-        self.max_errors = 5
-        
-    def read(self):
-        """读取传感器数据，带错误处理"""
-        try:
-            self.sensor.get_sensor_data()
-            data = {
-                "temp": self.sensor.data.temperature,
-                "hum": self.sensor.data.humidity,
-                "pres": self.sensor.data.pressure,
-                "gas": self.sensor.data.gas_resistance,
-                "valid": True
-            }
-            self.error_count = 0  # 重置错误计数
-            return data
-            
-        except Exception as e:
-            self.error_count += 1
-            print(f"读取错误 #{self.error_count}: {e}")
-            
-            if self.error_count >= self.max_errors:
-                print("传感器故障!请检查连接")
-                return {"valid": False}
-            
-            return {"valid": False}
-
-# 使用示例
-i2c = I2C(0, scl=Pin(22), sda=Pin(21))
-bme = BME680Sensor(i2c)
-
-while True:
-    data = bme.read()
-    if data["valid"]:
-        print(f"温度: {data['temp']:.1f}°C")
-    else:
-        print("读数无效，重试...")
-    
-    time.sleep(2)
-```
-
----
-
-## 📝 今日作业 | Today's Assignment
-
-### 基础作业 (必做)
-
-1. **完成数据记录程序**  
-   修改读取程序，记录最近10次温度读数并计算平均值
-
-2. **回答问题**  
-   - I2C协议需要几根线?分别是什么?
-   - BME680的I2C地址是多少?
-   - 什么是"从设备地址"?
-
-3. **提交实验报告**  
-   包含:
-   - 接线照片
-   - 串口输出截图
-   - 遇到的问题及解决方法
-
-### 进阶作业 (选做)
-
-1. 研究: BME680的气体传感器如何工作?
-2. 实现: 根据温湿度计算体感温度(热指数)
-3. 思考: 如何减少传感器功耗?(提示: 间歇读取)
-
----
-
-## 📚 参考资源 | References
-
-- [BME680数据手册](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bme680-ds001.pdf)
-- [MicroPython I2C文档](https://docs.micropython.org/en/latest/esp32/quickref.html#i2c-bus)
-- [I2C协议详解](https://www.i2c-bus.org/i2c-primer/)
-
----
-
-## 🔮 明日预告 | Tomorrow's Preview
-
-**Day 3: UART通信与PM2.5传感器**
-
-- 学习UART串行通信协议
-- 连接PMS5003 PM2.5传感器
-- 解析传感器数据帧
-- 计算空气质量指数(AQI)
-
-**前置准备:**
-- 复习Python字符串操作
-- 了解十六进制数的基本概念
-
----
-
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+*最后更新: 2026-06 | Last updated: 2026-06*

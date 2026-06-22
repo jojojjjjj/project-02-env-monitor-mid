@@ -1,261 +1,186 @@
 # 课程总纲 | Curriculum Overview
 
-> 12天完整课程安排概览 | 12-Day Complete Course Schedule Overview
+> WiFi 温湿度网络时钟 · 复刻模式 · 10 天全日制课程
+> WiFi Temp/Humidity Network Clock · Replication Model · 10-Day Full-Time Course
 
 ---
 
 ## 课程设计理念 | Course Design Philosophy
 
-### 笨鸟先飞原则 (Fine-grained Scaffolding)
-考虑到学员技术背景薄弱，本课程采用**超细粒度**的任务分解:
-- 每个概念都有"为什么学这个"的解释
-- 每个步骤都有预期结果验证
-- 每天都有明确的可交付成果
+### 笨鸟先飞 (Fine-grained Scaffolding)
+面向零基础高中生，本课程采用**超细粒度**任务分解：
+- 每个概念都解释**为什么**（why），而不只是**怎么做**（how）。
+- 每一步都有预期结果与验证方法。
+- 每天都有明确的可交付成果。
 
-> Considering students' weak technical background, this course adopts **extra-fine-grained** task decomposition:
-> - Every concept has a "why learn this" explanation
-> - Every step has expected result verification
-> - Every day has clear deliverables
+> Every concept explains *why*, not just *how*. Every step has a verifiable expected result. Every day ships a deliverable.
 
-### 真实项目驱动 (Real-world Project Driven)
-课程围绕**构建一个可实际使用的IoT环境监测站**展开，所有知识点都有真实应用场景。
+### 复刻模式 (Replication Model)
+**源码由课程提供**，学员不写代码从零。重点放在**架构理解 + 接线 + 工具链 + 配置 + 调试**——这些才是嵌入式工程师真正的日常。详见下方「复刻模式说明」。
 
 ---
 
-## 📅 12天课程总览 | 12-Day Course Overview
+## 项目目标 | Project Goals
+
+10 天结束时，你将拥有一台**能用的桌面 WiFi 温湿度网络时钟**：
+
+1. 开机自动连 WiFi；
+2. 通过 SNTP 网络授时，时间准确；
+3. OLED 同屏显示**时间 + 温度 + 湿度**；
+4. 断网后仍能本地走时，重新联网自动校准；
+5. （可选）整点蜂鸣报时。
+
+---
+
+## 学习成果 | Learning Outcomes
+
+完成项目后，你将能够：
+
+| 类别 Category | 学到的能力 What you learn |
+|---|---|
+| **嵌入式架构** | 理解「主控 MCU + WiFi 协处理器 + 传感器 + 显示」四块如何分工协作 |
+| **接线 Wiring** | 看懂引脚表，正确连接 I2C / UART 设备，处理上拉与共地 |
+| **工具链 Toolchain** | 安装并使用 STM32CubeIDE 编译、烧录 STM32L433 固件 |
+| **配置 Configuration** | 修改 WiFi 账号密码、NTP 服务器、时区等参数 |
+| **调试 Debugging** | 用串口看输出、用 AT 命令试通 ESP8266、定位「OLED 不亮 / 读不到传感器 / 连不上 WiFi」等问题 |
+| **工程素养 Engineering** | Git 版本管理、周报、最终演示与复盘 |
+
+> ⚠️ 本项目**不**要求你从零写 C 代码。你需要能**读懂**基础 C 语法（变量、函数、`while(1)` 循环、`if` 判断）即可，以便在调试时理解源码做了什么、在哪里改配置。
+
+---
+
+## 你将做出什么 | What You Will Build
+
+一台桌面摆件大小的电子时钟：
 
 ```
-第一周: 硬件与感知基础 | Week 1: Hardware & Sensing Basics
-┌─────────┬─────────────────────────────────────────────────┐
-│ Day 1-3 │ ESP32入门 + 单传感器驱动 + 通信协议理解          │
-│         │ → 可读取温湿度/气压/气体数据                     │
-├─────────┼─────────────────────────────────────────────────┤
-│ Day 4-6 │ 多传感器整合 + OLED显示 + 本地数据记录           │
-│         │ → 完整的本地监测原型机                           │
-└─────────┴─────────────────────────────────────────────────┘
-
-第二周: 网络与系统集成 | Week 2: Networking & System Integration
-┌─────────┬─────────────────────────────────────────────────┐
-│ Day 7-9 │ WiFi连接 + MQTT数据上传 + 服务器搭建             │
-│         │ → 远程数据采集与存储系统                         │
-├─────────┼─────────────────────────────────────────────────┤
-│ Day10-12│ 数据可视化 + 外壳设计 + 演示准备                 │
-│         │ → 完整IoT产品 + 最终展示                         │
-└─────────┴─────────────────────────────────────────────────┘
+┌─────────────────────────────┐
+│   14:23:45                  │  ← 时间（SNTP 网络授时）
+│                             │
+│   温度 Temperature  24.6°C  │  ← SHT31
+│   湿度 Humidity    56%RH    │  ← SHT31
+└─────────────────────────────┘
+        0.96" OLED (128×64)
 ```
 
----
-
-## 每日详细安排 | Daily Detailed Schedule
-
-### Day 1: 项目启动与ESP32入门 | Project Launch & ESP32 Basics
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | 项目介绍、硬件认识、MicroPython烧录 | 能识别所有硬件组件 |
-| 下午 | GPIO控制、LED闪烁实验 | ESP32第一个可运行程序 |
-| 晚上 | 练习与总结 | 提交Day 1作业 |
-
-**核心概念:** 微控制器、GPIO、数字输出  
-**为什么学:** 所有嵌入式项目的基础
+整机由一块 STM32L433 主控板 + ESP-01S WiFi 模块 + SHT31 传感器 + OLED 屏组成，USB 供电。
 
 ---
 
-### Day 2: MicroPython基础与传感器接口 | MicroPython & Sensor Interface
+## 复刻模式说明 | About the Replication Model
 
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | Python语法复习、I2C协议原理 | 理解设备间通信 |
-| 下午 | BME680传感器驱动安装与读取 | 能读取温湿度数据 |
-| 晚上 | 数据异常处理练习 | 稳定的传感器读取 |
+### 为什么是「复刻」而不是「从零开发」？
 
-**核心概念:** I2C通信、时序、传感器库  
-**为什么学:** I2C是物联网设备最常用的通信协议
+对一个零基础的高中生，10 天里「从零写出能联网对时的 STM32 固件」几乎不可能。但「**看懂别人写好的代码、把它跑起来、并在出问题时定位修复**」是完全可以做到的——这恰恰是工程师每天都在做的事。
 
----
+> Writing network-time-sync STM32 firmware from scratch in 10 days is unrealistic for a zero-foundation student. But *reading existing code, getting it to run, and fixing it when it breaks* is absolutely achievable — and it's exactly what engineers do daily.
 
-### Day 3: UART通信与PM传感器 | UART & PM Sensor
+### 在这个项目里，你学到的「不是编程，而是工程」：
 
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | UART协议、串口编程 | 理解异步通信 |
-| 下午 | PMS5003 PM2.5传感器连接 | 能读取PM数据 |
-| 晚上 | 串口数据解析实战 | 完整的PM读取函数 |
+| 你以为嵌入式是 | 其实嵌入式工程师每天做的（你将做的）|
+|---|---|
+| 写一堆 C 代码 | 读代码、理解架构、改配置 |
+| 算法竞赛 | 接线、烧录、看串口日志、定位故障 |
+| 一个人闷头写 | 查数据手册、查 AT 命令手册、查别人踩过的坑 |
 
-**核心概念:** UART、波特率、数据帧  
-**为什么学:** UART适用于高速数据传输，如激光传感器
+### 源码从哪来？
 
----
+课程随包提供完整 STM32L433 固件源码（位于 `software/src/`），整理自 UP 主「乐在程上」KE1 开发板例程：
+- **SHT31 驱动**（I2C）+ **SSD1306 OLED 驱动**（软件 I2C）来自 KE1 NBIoT 温湿度采集例程；
+- **UART/AT 命令框架**来自 KE1_UART 例程（原为 NB-IoT，本课程适配为 ESP8266 WiFi AT）；
+- **GPIO / PWM** 来自 KE1_GPIO / KE1_PWM 例程；
+- **新增**：ESP8266 WiFi + SNTP 联网逻辑、OLED 时间显示函数、时钟管理。
 
-### Day 4: OLED显示屏驱动 | OLED Display Driver
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | SSD1306驱动原理、I2C复用 | 显示屏基础 |
-| 下午 | 文字与简单图形显示 | 能显示传感器数据 |
-| 晚上 | 自定义显示布局设计 | 美观的数据界面 |
-
-**核心概念:** 显示缓冲、帧率、I2C多设备  
-**为什么学:** 本地显示是IoT设备的必备功能
+你不需要写这些——你需要**理解它们如何拼在一起**，并在自己板子上让它们跑起来。
 
 ---
 
-### Day 5: 数据整合与本地记录 | Data Integration & Local Logging
+## 项目架构图 | System Architecture
 
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | 多传感器数据结构设计 | 统一的数据格式 |
-| 下午 | 本地文件系统、数据记录 | 能保存历史数据 |
-| 晚上 | 数据分析与简单统计 | 数据质量报告 |
+```
+                 ┌──────────────┐
+   SHT31 (I2C) ──┤              ├── SSD1306 OLED (I2C, 0.96")
+   Buzzer (PWM)──┤  STM32L433   ├── ESP-01S / ESP8266 (UART, AT 固件 → WiFi SNTP)
+   Buttons (GPIO)┤   (KE1 板)   ├── USB (供电 + 调试串口)
+                 └──────┬───────┘
+                        │ UART (AT 命令)
+                 ┌──────▼───────┐
+                 │   ESP8266    │── WiFi ── NTP 服务器 (SNTP 网络授时)
+                 └──────────────┘
+```
 
-**核心概念:** 数据结构、JSON、文件系统  
-**为什么学:** 真实系统需要处理多个数据源
+### 四块各自干什么 | Who does what
 
----
+| 模块 | 职责 | 接口 |
+|---|---|---|
+| **STM32L433** | 总指挥：读传感器、刷显示、管时间、发 AT 命令 | — |
+| **SHT31** | 量温度、量湿度 | I2C（0x44）|
+| **SSD1306 OLED** | 显示时间 + 温湿度 | 软件 I2C（PB8/PB9）|
+| **ESP8266 (ESP-01S)** | 连 WiFi、向 NTP 服务器取时间、回传给主控 | UART（AT 命令）|
 
-### Day 6: WiFi连接与网络基础 | WiFi & Networking Basics
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | WiFi原理、socket编程基础 | 理解网络连接 |
-| 下午 | ESP32 WiFi连接实践 | 设备能连接路由器 |
-| 晚上 | 网络调试与错误处理 | 稳定的网络连接 |
-
-**核心概念:** SSID、IP、DNS、socket  
-**为什么学:** IoT的核心价值在于网络连接
-
----
-
-### Day 7: MQTT协议入门 | MQTT Protocol Introduction
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | MQTT发布/订阅模型 | 理解消息传递机制 |
-| 下午 | ESP32 MQTT客户端编程 | 能发布传感器数据 |
-| 晚上 | 消息质量(QoS)实验 | 可靠的数据传输 |
-
-**核心概念:** Broker、Topic、QoS  
-**为什么学:** MQTT是物联网标准通信协议
+> 关键认知：STM32L433 **没有** WiFi。所有联网动作都交给 ESP8266——主控只能通过 UART「发命令、等回复」。理解了这一点，你就理解了为什么需要 AT 命令框架。
 
 ---
 
-### Day 8: 服务器端搭建(一) | Server Setup (Part 1)
+## 10 天课程总览 | 10-Day Course Overview
 
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | Mosquitto Broker安装配置 | MQTT消息代理运行 |
-| 下午 | Python MQTT订阅程序 | 能接收ESP32数据 |
-| 晚上 | 消息过滤与处理 | 结构化数据流 |
+```
+第一周: 嵌入式基础与传感器显示 | Week 1: Embedded Basics & Sensor Display
+┌─────────┬─────────────────────────────────────────────┐
+│ Day 1-3 │ STM32L433 入门 + 工具链 + 点灯/串口 + SHT31   │
+│         │ → 能读温湿度、串口能看到数值                  │
+├─────────┼─────────────────────────────────────────────┤
+│ Day 4-6 │ OLED 显示温湿度 + ESP8266 AT 试通 + WiFi 联网 │
+│         │ → OLED 显示温湿度；ESP8266 连上 WiFi          │
+└─────────┴─────────────────────────────────────────────┘
 
-**核心概念:** Broker、订阅、消息路由  
-**为什么学:** 了解IoT后端架构
+第二周: 网络授时与整合 | Week 2: SNTP & Integration
+┌─────────┬─────────────────────────────────────────────┐
+│ Day 7-8 │ SNTP 网络授时 + 时钟整合（时间+温湿度同屏）   │
+│         │ → 一台能联网对时的时钟                       │
+├─────────┼─────────────────────────────────────────────┤
+│ Day 9-10│ 完善（蜂鸣/按键/断网回退）+ 组装 + 调试展示   │
+│         │ → 桌面摆件成品 + 最终演示                    │
+└─────────┴─────────────────────────────────────────────┘
+```
 
----
-
-### Day 9: 服务器端搭建(二) | Server Setup (Part 2)
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | InfluxDB时序数据库安装 | 数据存储系统 |
-| 下午 | Grafana仪表盘配置 | 数据可视化 |
-| 晚上 | 完整数据链路测试 | 端到端系统 |
-
-**核心概念:** 时序数据库、数据可视化  
-**为什么学:** 数据价值在于可视化展示
-
----
-
-### Day 10: 硬件整合与外壳设计 | Hardware Integration & Enclosure
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | 电路整理、焊接入门 | 整洁的硬件系统 |
-| 下午 | 3D打印/激光切割外壳 | 专业产品外观 |
-| 晚上 | 传感器校准 | 准确的数据采集 |
-
-**核心概念:** PCB布局、工业设计、校准  
-**为什么学:** 工程项目需要考虑产品化
+每日详细安排见 `day-01.md` … `day-10.md`。
 
 ---
 
-### Day 11: 系统优化与测试 | System Optimization & Testing
+## 每周里程碑 | Weekly Milestones
 
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | 性能优化、功耗分析 | 高效的代码 |
-| 下午 | 异常处理、稳定性测试 | 鲁棒的系统 |
-| 晚上 | 功能扩展探索 | 创新改进点 |
+### 第一周里程碑 | Week 1 Milestone：本地感知与显示
+- [ ] 工具链装好，能编译烧录 STM32L433
+- [ ] SHT31 能读出温湿度，串口可见
+- [ ] OLED 能显示温湿度
+- [ ] 提交 Week 1 Check-in Report
 
-**核心概念:** 代码优化、异常处理、测试  
-**为什么学:** 工程质量体现在细节
-
----
-
-### Day 12: 项目展示与总结 | Final Presentation & Summary
-
-| 时间段 | 主题 | 产出 |
-|--------|------|------|
-| 上午 | 演示准备、演讲技巧 | 10分钟项目展示 |
-| 下午 | 项目展示、互评 | 反馈与改进 |
-| 晚上 | 总结与展望 | 技术路线图 |
-
-**核心概念:** 技术演讲、项目总结  
-**为什么学:** 工程师需要表达能力
+### 第二周里程碑 | Week 2 Milestone：联网时钟成品
+- [ ] ESP8266 连上 WiFi
+- [ ] SNTP 取到网络时间
+- [ ] OLED 同屏显示时间 + 温湿度
+- [ ] 最终演示 + 复盘
 
 ---
 
-## 🎯 每周里程碑 | Weekly Milestones
+## 学习支持资源 | Learning Support Resources
 
-### 第一周里程碑: 本地监测原型
-- [x] ESP32能读取所有传感器数据
-- [x] OLED显示当前环境指标
-- [x] 本地记录历史数据
-- [x] 提交Week 1 Check-in Report
-
-### 第二周里程碑: 远程IoT系统
-- [x] ESP32通过MQTT上传数据
-- [x] 服务器接收并存储数据
-- [x] Grafana实时仪表盘
-- [x] 最终项目展示
+- **视频源**：[Bilibili BV1tb4y1U7Du](https://www.bilibili.com/video/BV1tb4y1U7Du/)（UP 主：乐在程上）
+- **KE1 例程**：`resources/视频中的例程源码_v0.1.zip`
+- **参考例程**：`resources/NBIoT温湿度采集_参考.zip`、`resources/STM32_I2C基础_参考.zip`
+- **STM32CubeIDE**：[ST 官网下载](https://www.st.com/en/development-tools/stm32cubeide.html)
+- **ESP8266 AT 指令集**：[Espressif 官方文档](https://docs.espressif.com/projects/esp-at/)
 
 ---
 
-## 📊 评分权重分布 | Grading Weight Distribution
+## 重要提醒 | Important Notes
 
-| 阶段 | 权重 | 主要评估点 |
-|------|------|-----------|
-| 第一周 | 30% | 代码质量、实验报告 |
-| 第二周 | 40% | 系统集成、稳定性 |
-| 最终展示 | 20% | 演讲效果、功能完整度 |
-| 团队协作 | 10% | 进度汇报、Git使用 |
+1. **每日成果当天提交**——及时反馈是学习关键。
+2. **遇问题先看串口、再查文档、最后问人**——培养定位能力。
+3. **定期 Git 提交**——保护你的工作成果，也方便回退。
+4. **改配置而非改代码**——本项目大部分「定制」是改 WiFi/NTP/时区配置，不是改逻辑代码。
 
 ---
 
-## 📚 学习支持资源 | Learning Support Resources
-
-### 在线资源
-- [MicroPython文档](https://docs.micropython.org/)
-- [ESP32技术参考手册](https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_en.pdf)
-- [MQTT Essentials](https://www.hivemq.com/mqtt-essentials/)
-
-### 调试工具
-- Thonny IDE - MicroPython开发
-- MQTT Explorer - MQTT调试
-- PuTTY - 串口监控
-
-### 社区支持
-- 项目答疑群: (根据实际情况填写)
-- GitHub Issues: (项目仓库地址)
-
----
-
-## ⚠️ 重要提醒 | Important Notes
-
-1. **每日作业必须在当天提交** - 及时反馈是学习的关键
-2. **遇到问题先查文档再问人** - 培养解决问题的能力
-3. **代码必须有注释** - 好的工程习惯
-4. **定期提交Git** - 保护你的工作成果
-
----
-
-*最后更新: 2026-05-05 | Last updated: 2026-05-05*
+*最后更新: 2026-06-22 | Last updated: 2026-06-22*
