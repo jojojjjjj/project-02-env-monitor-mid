@@ -2,14 +2,16 @@
 
 > Project 02 — 温湿度网络时钟 (WiFi Temp/Humidity Network Clock) · 复刻 (replication) model · 10 days · 难度 2/5
 
-本项目采用「复刻」学习模式：UP主「乐在程上」的固件代码已提供（`software/src/`），学员负责接线 + 烧录 + 配置 + 调试 + 组装。作业围绕**工程流程**而非从零写代码。所有作业中英双语，遵循「笨鸟先飞」原则——解释 WHY，不只 HOW。
+本项目采用「复刻」学习模式：UP主「乐在程上」的固件代码已提供（`software/src/`），学员负责接线 + 烧录 + 配置 + 调试 + 组装。作业围绕**工程流程**而非从零写代码。所有作业中英双语，遵循「循序渐进」原则——解释 WHY，不只 HOW。
 
 ---
 
 ## 一、作业总览 | Assignment Overview
 
-| 作业 | 类型 | 占分 | 关联天数 | 提交位置 |
-|------|------|------|---------|---------|
+> 下表的「占分」是**作业组件权重**（assessment-component weighting，按交付物类型分），不是六大评分维度。六大评分维度（复刻完成度 30 / 架构理解 15 / 接线焊接 15 / 调试能力 15 / 演示 15 / 文档 10 = 100）见 [`grading-rubric.md`](./grading-rubric.md) 与 [`assignments/rubric.md`](../assignments/rubric.md)。组件权重与评分维度是两套视角：组件权重回答「这一份作业值多少分」，评分维度回答「这些分按什么能力给」。
+
+| 作业 | 类型 | 组件占分 | 关联天数 | 提交位置 |
+|------|------|---------|---------|---------|
 | Week-1 Check-in 周报 | 进度报告 | 10 分 | Day 1-5 | `assignments/week-1-checkin.md` |
 | Week-2 Check-in 周报 | 进度报告 | 10 分 | Day 6-10 | `assignments/week-2-checkin.md` |
 | Final Presentation 最终演示 | 演示 + 答疑 | 20 分 | Day 10 | `assignments/final-presentation.md` |
@@ -18,6 +20,8 @@
 | **合计** | | **100 分** | | |
 
 > 加分项（最多 +10）：PCB 打样、加 RTC/MQTT 扩展、演示视频、开源贡献。
+
+> **阶段边界**：Week 1 = Day 1-5（工具链 + GPIO/UART + SHT31 + OLED + ESP8266 WiFi，**不含 SNTP**）；Week 2 = Day 6-10（SNTP 对时 + 时钟整合 + 完善 + 组装 + 演示）。与 `overview.md`、`week-1-checkin.md`、`week-2-checkin.md` 一致。
 
 详细评分细则见 [`grading-rubric.md`](./grading-rubric.md)。
 
@@ -150,8 +154,8 @@
 
 ### 6.2 代码与配置（15 分）
 - `software/src/` 固件能编译能烧录
-- `config.h` WiFi/NTP 配置正确（真实密码不提交，用占位）
-- 对 UP主 固件做的适配/整合/优化有迹可循（注释、commit message）
+- `wifi_config.h`（`software/src/env_clock/Core/Inc/wifi_config.h`）WiFi/NTP 配置正确（真实密码不提交，用占位）；`config.template.yaml` 是只读对照
+- 对 UP主 固件做的适配/整合/优化有迹可循（注释、commit message）；`main.c` 调用 `OLED_ShowClock(...)` 完成主界面刷新
 
 ### 6.3 Git 工程素养（10 分）
 - 每天 1+ commit，`git log` 能看出 10 天的推进
@@ -166,7 +170,7 @@
 1. **每日作业当天提交**：Day N 的作业在 Day N 结束前 push 到 Git。
 2. **周报按时交**：Week-1 周报 Day 5 末交，Week-2 周报 Day 9 末交。迟交扣 2 分/天。
 3. **演示必须现场**：Day 10 现场演示，缺席按 0 分。
-4. **真实密码别提交**：`config.h` 里 WiFi 密码用 `#define WIFI_PWD "YOUR_PASSWORD_HERE"` 占位，真实密码只在本地改不 push。
+4. **真实密码别提交**：`wifi_config.h`（`software/src/env_clock/Core/Inc/wifi_config.h`）里 WiFi 密码用 `#define WIFI_PWD "YOUR_PASSWORD_HERE"` 占位，真实密码只在本地改不 push。`config.template.yaml` 是只读对照，不要往里填真实密码。
 5. **复刻诚实**：固件基础是 UP主 代码，自己做的整合/调试/优化要如实说明，不冒充从零原创。
 6. **Git 是命根子**：代码丢失、成品损坏不交 = 不及格。每天 push 到远程备份。
 
@@ -174,13 +178,13 @@
 
 ## 八、评分标准 | Grading Criteria
 
-详见 [`grading-rubric.md`](./grading-rubric.md)。六大维度：
+详见 [`grading-rubric.md`](./grading-rubric.md) 与 [`assignments/rubric.md`](../assignments/rubric.md)。六大维度（权重 **30/15/15/15/15/10**）：
 
-1. 复刻完成度 (20 分)
+1. 复刻完成度 (30 分)
 2. 架构理解 (15 分)
-3. 接线焊接质量 (20 分)
+3. 接线焊接质量 (15 分)
 4. 调试能力 (15 分)
-5. 演示展示 (20 分)
+5. 演示展示 (15 分)
 6. 文档与工程素养 (10 分)
 
 **基础总分 100，加分项最多 +10，最高 110 分。**
@@ -209,6 +213,6 @@ Week 2 (Day 6-10): SNTP 对时 + 时钟整合 + 完善 + 组装 + 演示
 
 ---
 
-*笨鸟先飞 · Explain WHY, not just HOW · 复刻是为了学会真实工程流程*
+*循序渐进 · Explain WHY, not just HOW · 复刻是为了学会真实工程流程*
 
 *最后更新: 2026-06 | Last updated: 2026-06*

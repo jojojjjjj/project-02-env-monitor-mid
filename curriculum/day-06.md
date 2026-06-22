@@ -1,10 +1,18 @@
 # Day 6: WiFi 联网 + SNTP 网络授时 —— 获取网络时间 | WiFi + SNTP Time Sync
 
-> **学习目标 | Learning Objectives**
-> - 理解 NTP/SNTP 协议：网络对时的原理、时区、UTC
-> - 用 ESP8266 AT 命令配 SNTP，向 NTP 服务器获取当前时间
-> - 解析 ESP8266 返回的时间字符串（`+CIPSNTPTIME:`），转换成北京时间
-> - 把网络时间显示到 OLED，验证它和手机时间一致
+> **English summary**: Now that WiFi works, we use SNTP (Simple Network Time Protocol) to sync the clock to an NTP server, parse the returned time string into Beijing time (UTC+8), and display it on the OLED. The key design choice is "sync once + local tick" rather than querying NTP every second.
+
+> **⏱ 预计耗时 | Estimated Time**: 约 4-5 小时 | ~4-5 hours
+
+> **学习成果 | Learning Outcomes**
+> - **解释** NTP/SNTP 协议原理：网络对时、UTC、时区，能说清北京时间 = UTC+8 的换算
+> - **实现** ESP8266 AT 命令配 SNTP（`AT+CIPSNTPCFG=1,8,"ntp.aliyun.com"`）并向 NTP 服务器获取当前时间
+> - **分析** ESP8266 返回的时间字符串（`+CIPSNTPTIME:`），用 `sscanf` 解析成结构化 `年/月/日/时/分/秒`
+> - **设计**「对时一次 + 本地 tick」的同步策略，把网络时间显示到 OLED 并验证准确性
+
+## 为什么学这个 | Why This Matters
+
+有了 WiFi，你的设备终于能「问别人现在几点」了。这就像**每周对一次手表**：你不需要每秒都盯着标准时间，隔一段时间对一次，中间靠手表自己走就行。网络授时让时钟永远准——不用纽扣电池、不用 DS3231 RTC 芯片，只要联网就能对时。这是「网络时钟」相对普通电子钟的核心优势，也是后面 Day 8 断网回退（本地继续走时）的基础。今天搞通 SNTP，你的时钟就「活」在互联网时间上了。
 
 > **产出 | Deliverable**: OLED 显示从网络同步的北京时间 `2026-06-22 14:30:05`，和手机时间对得上
 
@@ -62,7 +70,7 @@ AT+CIPSNTPTIME?                        // 查当前时间
 
 ## 三、配置 SNTP 并获取时间 | Configuring SNTP and Getting Time
 
-### 3.1 连 WiFi 后配 SNTP
+### 3.1 连 WiFi 后配 SNTP (难度: ⭐⭐)
 
 在 `main.c` 里，连 WiFi 成功后（Day 5 的 `ConnectWiFi` 返回 1）追加：
 
@@ -81,7 +89,7 @@ printf("Requesting time...\r\n");
 /* USER CODE END 2 */
 ```
 
-### 3.2 解析时间字符串
+### 3.2 解析时间字符串 (难度: ⭐⭐⭐)
 
 ESP8266 返回的时间格式（V2.x）：
 
@@ -119,7 +127,7 @@ if (sscanf(atResp, "+CIPSNTPTIME:%3s %3s %d %d:%d:%d %d",
 
 > **WHY `sscanf` not strtok?** `sscanf` 一行匹配固定格式，比 `strtok` 切分简单不易错。但 `sscanf` 占代码空间较大（~6KB），L433 的 256KB Flash 够用。如果 Flash 紧张再改手写解析。
 
-### 3.3 主循环定期对时 + 显示
+### 3.3 主循环定期对时 + 显示 (难度: ⭐⭐)
 
 ```c
 /* USER CODE BEGIN WHILE */
@@ -145,14 +153,18 @@ while (1)
     Clock_Tick(&now);  // 秒+1，自动进位分时日月
 
     // 读温湿度 + 显示
-    if (KE1_I2C_SHT31(&t, &h) == HAL_OK) {
-        OLED_ShowClock(&now);    // 显示时间（第一行）
-        OLED_ShowT_H(t, h);      // 显示温湿度（第三行）
-    }
+    KE1_I2C_SHT31(&t, &h);
+    // 主显示函数：一次性把 年/月/日/时/分/秒/星期/温度/湿度/是否已同步 都画到 OLED
+    // 辅助函数 OLED_ShowTime(h,m,s) + OLED_ShowDate(...) 在内部被调用
+    OLED_ShowClock(now.year, now.month, now.day,
+                   now.hour, now.min, now.sec,
+                   now.wday, t, h, (lastSync != 0));
     HAL_Delay(1000);
     /* USER CODE END WHILE */
 }
 ```
+
+> **关于 `OLED_ShowClock` 的签名**: main.c 调用的主显示函数是 `OLED_ShowClock(year,month,day,hour,min,sec,wday,temp,humi,synced)`——它一次性把时间、日期、星期、温湿度、同步状态都画到屏幕上。驱动里另有辅助函数 `OLED_ShowTime(h,m,s)` 和 `OLED_ShowDate(...)` 供分块显示用，但主循环只调 `OLED_ShowClock` 这一个。`synced` 参数用来在屏幕角上标「已联网对时 / 本地走时」状态，为 Day 8 断网回退做准备。
 
 > **WHY sync every 30 min not every second?** 每次 `CIPSNTPTIME?` 要走一次网络往返，几百毫秒，还占串口。对时一次后，STM32 自己用 `HAL_GetTick()` 维护秒级计数就够准（L433 内部 RTC 短期精度够 30 分钟）。每 30 分钟重新对一次，校正累积漂移。这是真实系统的「同步 + 本地维护」模式。
 
@@ -247,18 +259,43 @@ int is_leap(int y) { return (y%4==0 && y%100!=0) || (y%400==0); }
 
 ## 八、今日作业 | Homework
 
-1. **日期显示**: 在时间下方一行显示 `2026-06-22` 日期。
-2. **星期显示**: 解析 ESP 返回的星期 (Mon/Tue/...)，在 OLED 角落显示中文或英文星期。
-3. **对时失败处理**: 如果连续 3 次 `CIPSNTPTIME` 返回 `1970` 年，OLED 显示「NTP FAIL」并每 10 秒重试。
-4. **回答**:
-   - NTP 服务器返回的是 UTC 还是本地时间？北京时间怎么换算？
-   - 为什么不每秒都查 NTP？
-   - 闰年的判断规则是什么？2100 年是闰年吗？
-5. **Git 提交**:
+1. **日期显示** (⭐): 在时间下方一行显示 `2026-06-22` 日期。
+2. **星期显示** (⭐⭐): 解析 ESP 返回的星期 (Mon/Tue/...)，在 OLED 角落显示中文或英文星期。
+3. **对时失败处理** (⭐⭐): 如果连续 3 次 `CIPSNTPTIME` 返回 `1970` 年，OLED 显示「NTP FAIL」并每 10 秒重试。
+4. **Git 提交**:
    ```bash
    git add curriculum/day-06.md
    git commit -m "day06: SNTP time sync, network clock on OLED"
    ```
+
+### 理解验证问题 | Comprehension Check
+
+**Q1** (设计权衡): 为什么对时策略选「30 分钟对一次 + 本地 tick」而不是「每秒查 NTP」？从网络往返/串口占用/服务器限制/精度需求四个角度分析。
+
+> **参考答案**: (1) 网络往返——每次 `CIPSNTPTIME?` 走一次网络往返几百毫秒，每秒查会让 OLED 卡顿、主循环阻塞；(2) 串口占用——AT 响应挤占 USART3，频繁对时和其它 AT 命令抢总线；(3) 服务器限制——1 秒查一次 NTP 服务器会被判定为滥用、可能被 ban 或限流；(4) 精度需求——L433 内部时钟短期精度足够，30 分钟内漂移 1-2 秒可接受，定期重对时校正累积漂移即可。综合：用「同步 + 本地维护」模式，既准又不惹服务器。
+
+**Q2** (原理追问): NTP 服务器返回的是 UTC 还是本地时间？北京时间怎么换算？如果时区设成 0 会怎样？
+
+> **参考答案**: NTP 服务器返回的是 **UTC（世界协调时）**，即全球时间基准。北京时间在东八区，**北京时间 = UTC + 8 小时**。ESP8266 AT 固件根据 `AT+CIPSNTPCFG=1,8,...` 的第 2 个参数（时区）自动加偏移，所以 `CIPSNTPTIME?` 返回的已是北京时间。如果时区设成 0，返回的就是 UTC，会比北京时间少 8 小时——验证时区参数真生效的方法就是故意设 0 看时间差。
+
+**Q3** (原理追问): 2100 年是闰年吗？用闰年判断规则说明，并解释 `Clock_Tick` 里日期进位为什么必须考虑闰年。
+
+> **参考答案**: 闰年规则——能被 4 整除且不能被 100 整除，或者能被 400 整除。2100 能被 4 和 100 整除、但不能被 400 整除，所以 **2100 年不是闰年**（2 月只有 28 天）。`Clock_Tick` 在 2 月 28 日 23:59:59 过 1 秒时，必须判断当年是否闰年：非闰年进位到 3 月 1 日 00:00:00，闰年进位到 2 月 29 日 00:00:00。算错日期会跳一天，跨月跨年那一刻暴露得最明显。
+
+**Q4** (故障分析): `CIPSNTPTIME` 返回 `1970-01-01`，按可能性排序列出排查链。
+
+> **参考答案**: `1970-01-01` 是 Unix 纪元零点，说明 SNTP 还没对上时。排查链：① WiFi 真连上了吗——`AT+CIFSR` 看有没有 IP；② 能访问公网吗——校园网/公司内网可能封 UDP 123，`AT+PING="ntp.aliyun.com"` 验证；③ SNTP 配了吗——`AT+CIPSNTPCFG?` 查配置是否启用、时区 8、服务器域名对；④ 等够时间了吗——配完 SNTP 至少 `HAL_Delay(3000)` 再查；⑤ NTP 服务器域名换一个——`ntp.aliyun.com` 不通换 `cn.ntp.org.cn` 或 `time.windows.com`。
+
+### 今日评分标准 | Rubric
+
+| 维度 | 满分 | 评分细则 |
+|------|------|---------|
+| 完成度 | 4 | SNTP 配置 `OK`；OLED 显示北京时间且与手机一致；日期/星期显示完成 |
+| 理解深度 (CC 回答) | 3 | 能讲清对时策略、UTC→北京换算、闰年规则与 2100 年 |
+| 代码/接线质量 | 2 | `sscanf` 解析正确、`Clock_Tick` 进位含闰年、`OLED_ShowClock` 签名调用正确 |
+| 创意拓展 | 1 | 对时失败重试、多 NTP 服务器备份、星期中文化等 |
+
+> **今日产出 = 明日输入**: 跑通的网络时间 + `OLED_ShowClock` 显示函数 = Day 7 时钟整合的输入（明天把时间/温湿度/日期整合成完整桌面时钟界面）。
 
 ---
 

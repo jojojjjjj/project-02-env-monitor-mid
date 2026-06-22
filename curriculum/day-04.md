@@ -1,10 +1,18 @@
 # Day 4: OLED 显示 —— SSD1306 + 显示温湿度 | OLED Display: SSD1306 + Showing Temp/Humidity
 
-> **学习目标 | Learning Objectives**
-> - 理解 SSD1306 OLED 的显示原理：128×64 像素、页/列寻址、字模
-> - 把 OLED 接到 KE1 板的 PB8/PB9（软件 I2C），理解为什么 OLED 用软件 I2C 而 SHT31 用硬件 I2C
-> - 烧录 UP主提供的 OLED 驱动，屏幕上显示「温度 + 湿度」
-> - 理解字模（font）的概念，知道怎么显示中文
+> **English summary**: Today we wire a 0.96" SSD1306 OLED to PB8/PB9 (software I2C), flash the provided driver, and show live temperature/humidity on screen. The key insight is *why* OLED uses software I2C while SHT31 uses hardware I2C — separate buses keep a slow high-volume device from blocking a precise low-volume one.
+
+> **⏱ 预计耗时 | Estimated Time**: 约 4-5 小时 | ~4-5 hours
+
+> **学习成果 | Learning Outcomes**
+> - **解释** SSD1306 OLED 的显示原理：128×64 像素、页/列寻址、字模，能说清「页」为什么是 8 行一组
+> - **实现** OLED 与 KE1 板 PB8/PB9（软件 I2C）的接线与 CubeMX 配置，并**分析**为什么 OLED 用软件 I2C 而 SHT31 用硬件 I2C
+> - **识别** UP主提供的 OLED 驱动里的关键函数（`OLED_Init`/`OLED_ShowString`/`OLED_ShowT_H`），烧录后屏幕显示「温度 + 湿度」
+> - **分析**字模（font）的存储方式，知道 `c - ' '` 为何是字模数组下标、怎么扩展显示中文
+
+## 为什么学这个 | Why This Matters
+
+到目前为止，你的温度/湿度数据只能通过串口助手看到——必须插着电脑、开着串口窗口才看得到。OLED 把数据「搬到设备本身」上：插上电、不连电脑，也能一眼看到温湿度。这就像**从「只能打电话问天气」升级到「墙上挂个温度计」**——信息脱离了电脑，设备才真正独立。同时 OLED 也是后面 Day 6 网络时钟、Day 7 完整时钟界面的显示载体，今天跑通了，后面几天就只是「换显示内容」。
 
 > **产出 | Deliverable**: OLED 屏幕显示一行「温度 xx.xx°C 湿度 xx.xx%」，数值随 SHT31 实时更新
 
@@ -101,7 +109,7 @@ KE1 的设计：
 | SCL | PB8 | 软件 I2C 时钟（`oled.h` 里 `OLED_SCLK_Clr/Set` 操作的就是 PB8） |
 | SDA | PB9 | 软件 I2C 数据 |
 
-### 4.2 CubeMX 配置 PB8/PB9 为 GPIO 输出
+### 4.2 CubeMX 配置 PB8/PB9 为 GPIO 输出 (难度: ⭐)
 
 1. `.ioc` 里把 PB8 设为 `GPIO_Output`，Label = `OLED_SCL`；PB9 设为 `GPIO_Output`，Label = `OLED_SDA`。
 2. 两个都选 **Push-Pull** 输出（软件 I2C 自己控制电平，不用开漏——因为总线上就一个主控一个从机，且 OLED 模块板载有上拉）。**注意：这里和硬件 I2C 不同，硬件 I2C 必须开漏+上拉，软件 I2C 用推挽也可以**（只要总线上没有别的设备争抢）。
@@ -121,13 +129,13 @@ KE1 的设计：
 
 ## 五、烧录 UP主提供的 OLED 驱动 | Flashing the Provided OLED Driver
 
-### 5.1 加文件
+### 5.1 加文件 (难度: ⭐)
 
 1. `software/src/oled.c` → 工程的 `Core/Src/`
 2. `software/src/oled.h` + `software/src/oledfont.h` → `Core/Inc/`
 3. `main.c` 顶部 `#include "oled.h"`
 
-### 5.2 读懂驱动关键函数
+### 5.2 读懂驱动关键函数 (难度: ⭐⭐)
 
 参考源码 `oled.c`：
 
@@ -150,7 +158,7 @@ void OLED_ShowT_H(float T, float H) {
 
 > **WHY snprintf not sprintf?** `snprintf` 限制最大长度，防止缓冲区溢出。嵌入式上 `sprintf` 溢出是经典崩溃源——`acOledLineMsg` 只有 17 字节，超了就踩内存。`snprintf(buf, sizeof(buf), ...)` 永远安全。
 
-### 5.3 在 main 里调用
+### 5.3 在 main 里调用 (难度: ⭐⭐)
 
 `USER CODE BEGIN 2`（初始化区）：
 
@@ -179,7 +187,7 @@ while (1)
 }
 ```
 
-### 5.4 编译烧录，看屏幕
+### 5.4 编译烧录，看屏幕 (难度: ⭐)
 
 OLED 应该显示：
 
@@ -230,18 +238,44 @@ OLED 应该显示：
 
 ## 九、今日作业 | Homework
 
-1. **改显示布局**: 把温湿度分两行显示——第一行「T: 25.43'C」，第二行「H: 58.20%」。需要用 `OLED_ShowString` 分别定位 y=2 和 y=4。
-2. **加标题**: 第一行显示「EnvClock」或「环境时钟」（后者需要加字模），温湿度下移。
-3. **断电记忆测试**: 断电再上电，OLED 是否能正常初始化显示？记录启动到出画的时间（应该 <1 秒）。
-4. **回答**:
-   - SSD1306 的「页」是什么概念？为什么 64 行分成 8 页？
-   - 软件用 `snprintf` 而不是 `sprintf` 的原因？
-   - 为什么 OLED 用推挽、SHT31 的硬件 I2C 用开漏？
-5. **Git 提交**:
+1. **改显示布局** (⭐): 把温湿度分两行显示——第一行「T: 25.43'C」，第二行「H: 58.20%」。需要用 `OLED_ShowString` 分别定位 y=2 和 y=4。
+2. **加标题** (⭐⭐): 第一行显示「EnvClock」或「环境时钟」（后者需要加字模），温湿度下移。
+3. **断电记忆测试** (⭐): 断电再上电，OLED 是否能正常初始化显示？记录启动到出画的时间（应该 <1 秒）。
+
+### 理解验证问题 | Comprehension Check
+
+**Q1**: SSD1306 的「页 (page)」是什么概念？为什么 64 行要分成 8 页，而不是按单个像素寻址？
+
+> **参考答案**: SSD1306 控制器按字节（8 bit）组织显存，每写 1 字节就纵向点亮某一页某一列的 8 个像素（bit0=最上行，bit7=最下行）。把 64 行分成 8 页、每页 8 行高，是为了「写 1 字节控制 8 像素」的高效寻址——这比逐像素寻址少 8 倍的命令开销，配套字模库也按 8 像素高排列。代价是纵向定位只能以 8 像素为粒度，但入门显示完全够用。
+
+**Q2**: 这个项目里为什么 OLED 用软件 I2C、而 SHT31 用硬件 I2C？从「总线占用」「代码来源」「灵活性」三个角度分析。
+
+> **参考答案**: (1) 总线占用——OLED 刷整屏数据量大、时序长，SHT31 是小数据包，混在同一硬件 I2C 上 OLED 会阻塞 SHT31 的精确采样，分两条总线最干净；(2) 代码来源——UP主的 OLED 驱动是从早期 8051/STM32F1 项目移植来的软件 I2C 代码，直接复用不改最省事；(3) 灵活性——软件 I2C 用任意两个 GPIO 手摇时序，不挑引脚、方便布局。SHT31 要稳定精确采样所以用硬件 I2C2，两者各取所长。
+
+**Q3**: 驱动里显示字符串用 `snprintf` 而不是 `sprintf`，从「缓冲区大小」「安全性」「嵌入式崩溃源」角度说明原因。
+
+> **参考答案**: `snprintf(buf, sizeof(buf), ...)` 的第 2 个参数限制了最大写入长度，即便格式化结果超长也只写到 `sizeof(buf)-1` 并补 `\0`，永远不会越界。`sprintf` 没有长度保护，一旦格式化字符串比目标缓冲区长就会踩内存。本例 `acOledLineMsg` 只有 17 字节，`sprintf` 溢出是嵌入式上经典的「跑飞/HardFault」崩溃源。`snprintf` 永远安全，代价可忽略。
+
+**Q4** (类比迁移): 把 SSD1306 的「页+列」显存类比成一张方格纸，你会怎么对应？为什么说「显示一个字符 = 往某个页的某段列写一串字节」？
+
+> **参考答案**: 把 128×64 屏幕想象成 8 行×128 列的方格纸，每格是一个 8 行高的小竖条（一页一列）。一个 8×16 字符占 2 页宽 16 列，要写 32 字节（上半页 16 字节 + 下半页 16 字节）。每个字节就是一个小竖条里 8 个像素的亮灭状态。所以显示字符 = 计算它在纸上的页/列坐标，然后把字模那串字节按「先上半页再下半页」逐列写进去。
+
+4. **Git 提交**:
    ```bash
    git add curriculum/day-04.md
    git commit -m "day04: SSD1306 OLED driver, displaying temp/humidity"
    ```
+
+### 今日评分标准 | Rubric
+
+| 维度 | 满分 | 评分细则 |
+|------|------|---------|
+| 完成度 | 4 | OLED 显示温湿度并每秒刷新；改布局/加标题/断电测试均完成 |
+| 理解深度 (CC 回答) | 3 | 能说清「页」概念、软件 vs 硬件 I2C 的理由、`snprintf` 安全性 |
+| 代码/接线质量 | 2 | PB8/PB9 接线正确、CubeMX 配置与 `oled.h` 宏一致、无乱码 |
+| 创意拓展 | 1 | 自定义显示布局、加汉字字模、刷新策略优化等 |
+
+> **今日产出 = 明日输入**: 跑通的 OLED 驱动 + `OLED_ShowT_H` 显示函数 = Day 5 ESP8266 WiFi 联网后，状态信息能直接显示到屏幕上的输入。
 
 ---
 

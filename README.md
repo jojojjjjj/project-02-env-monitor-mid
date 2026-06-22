@@ -16,13 +16,13 @@
 
 | 角色 Role | 型号 Model | 说明 Notes |
 |---|---|---|
-| 主控 MCU | **STM32L433**（KE1 板）| 视频原片所用芯片，低功耗 Cortex-M4 |
+| 主控 MCU | **STM32L433CCT6**（KE1 板）| 视频原片所用芯片，LQFP48 / 256KB Flash，低功耗 Cortex-M4（CBT6 128KB 为引脚兼容备选）|
 | WiFi 协处理器 | **ESP-01S (ESP8266)** | 出厂 AT 固件，通过 UART 收发 AT 命令联网与对时 |
 | 温湿度传感器 | **SHT31** | I2C 接口，0x44；温度 ±0.2°C，湿度 ±2%RH |
 | 显示屏 | **SSD1306 OLED 0.96"** | 128×64，I2C；KE1 源码用软件 I2C（PB8=SCL / PB9=SDA）|
-| 蜂鸣器（可选）| 无源蜂鸣器 | TIM2 PWM，整点报时 / 闹钟 |
-| 按键（可选）| 轻触按键 ×2 | GPIO，手动调时 / 模式切换 |
-| 供电 | USB 5V → 板载 3.3V LDO | 桌面摆件常电供电 |
+| 蜂鸣器（可选）| 无源蜂鸣器 | TIM2_CH2 PWM（PA1），整点报时 / 闹钟 |
+| 按键（可选）| 轻触按键 ×2 | GPIO + EXTI，PC13 (KEY1) / PA15 (KEY2)，手动调时 / 模式切换 |
+| 供电 | USB 5V → 板载 3.3V LDO (AMS1117) | 桌面摆件常电供电 |
 
 > STM32L433 本身没有 WiFi，所以用 ESP8266 做「WiFi 协处理器」——主控通过 UART 发 AT 命令，让 ESP8266 去连 WiFi、去 NTP 服务器取时间，再把结果回传给主控。这是嵌入式里非常典型的「分工」架构。
 >
@@ -113,17 +113,38 @@ project-02-env-monitor-mid/
 │   ├── assembly-steps.md
 │   └── troubleshooting.md
 ├── software/                  ← 固件源码（提供）+ 构建/烧录/配置说明
-│   ├── src/                   ← STM32L433 固件（HAL/CubeIDE）
-│   ├── config.template.yaml   ← WiFi/NTP/时区 配置模板
-│   ├── README.md              ← 构建/烧录/配置说明
-│   └── tests/                 ← 串口集成测试
+│   ├── src/
+│   │   └── env_clock/         ← STM32CubeIDE 工程（本目录即固件本体）
+│   │       ├── .project / .cproject / .settings/   # CubeIDE 工程文件
+│   │       ├── env_clock.ioc                       # CubeMX 配置（引脚/时钟/外设）
+│   │       ├── STM32L433CCTX_FLASH.ld              # 链接脚本（CCT6/CBT6 通用）
+│   │       ├── Drivers/                            # ST HAL + CMSIS（CubeIDE 生成，勿手改）
+│   │       └── Core/
+│   │           ├── Inc/
+│   │           │   ├── wifi_config.h   ★ 学生唯一要改的文件（WiFi 账号密码 / NTP / 时区）
+│   │           │   ├── esp8266.h       # ESP8266 WiFi+SNTP AT 驱动
+│   │           │   ├── clock.h         # 时钟管理（SNTP 同步 + SysTick 守时）
+│   │           │   ├── oled.h          # SSD1306 OLED 驱动（含 OLED_ShowClock）
+│   │           │   ├── i2c.h / sht3x.h # SHT31 温湿度驱动（硬件 I2C2）
+│   │           │   ├── usart.h         # UART/AT 框架（printf 重定向）
+│   │           │   └── tim.h           # TIM2_CH2 PWM 蜂鸣器
+│   │           └── Src/                # 源文件（与上面头文件一一对应）
+│   │               └── main.c / esp8266.c / clock.c / oled.c / i2c.c / usart.c / tim.c / gpio.c
+│   ├── config.template.yaml   ← 配置模板（对照 wifi_config.h，只读镜像）
+│   ├── requirements.txt       ← 工具链清单
+│   ├── tests/
+│   │   └── test_basic.py      ← 串口集成测试（pyserial）
+│   └── README.md              ← 构建/烧录/配置说明
 ├── assignments/               ← 周报与展示模板
 │   ├── week-1-checkin.md
 │   ├── week-2-checkin.md
 │   ├── final-presentation.md
-│   └── rubric.md
+│   ├── rubric.md
+│   └── retrospective.md       ← Day 10 复盘报告模板
 └── resources/                 ← UP 主例程源码与参考（含 README 说明）
 ```
+
+> **学生唯一要编辑的配置文件是 `software/src/env_clock/Core/Inc/wifi_config.h`**（填 WiFi 账号密码 / NTP 服务器 / 时区）。`config.template.yaml` 只是供阅读的只读镜像。
 
 ---
 

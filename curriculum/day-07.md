@@ -1,10 +1,18 @@
 # Day 7: 时钟整合 —— 时间显示 + 温湿度 + 定时刷新 | Clock Integration: Time + Temp/Humidity + Refresh
 
-> **学习目标 | Learning Objectives**
-> - 把时间、日期、温湿度整合成一个完整、美观的桌面时钟 OLED 界面
-> - 理解显示布局设计：信息层级、字号对比、刷新策略
-> - 实现大字号时间显示（用 16×32 或拼接字模）
-> - 解决「整屏刷新闪屏」问题，只刷变化的区域
+> **⏱ 预计耗时 | Estimated Time**: 约 5-6 小时 | ~5-6 hours
+
+> Day 7 integrates the time, date, temperature, and humidity into one cohesive OLED desktop-clock interface, with per-second flicker-free refresh and per-data-type refresh rates (time 1s / sensor 5s / SNTP 30min).
+
+> **学习成果 | Learning Outcomes**
+> - **整合 (Integrate)** 时间、日期、温湿度、WiFi 状态为一个分层清晰的 OLED 桌面时钟界面
+> - **解释 (Explain)** 显示布局设计：信息层级、字号对比、刷新策略的依据
+> - **实现 (Implement)** 大字号时间显示（16×32 字模或 2× 放大）与局部刷新防闪屏
+> - **分析 (Analyze)** 「不同数据用不同刷新率」的设计权衡（时间 1s / 温湿度 5s / SNTP 30min）
+
+## 为什么学这个 | Why This Matters
+
+Day 1-6 你做出了「能读温湿度 + 能显示字符 + 能联网对时」的零件，今天要把它们拼成一个**像产品的桌面摆件**。类比：前 6 天你练的是「切菜、和面、调馅」，今天是「把饺子包出来摆盘上桌」——单点能力再强，整合不出一个完整体验就不算产品。信息分层（时间最大、温湿度最小）就像报纸排版：头版标题最大，广告最小，用户一眼就知道看哪里。
 
 > **产出 | Deliverable**: OLED 显示一个完整桌面时钟——大字号时间 `14:30` + 秒 + 日期 + 温湿度，每秒平滑刷新不闪屏
 
@@ -64,42 +72,56 @@
 
 ## 三、实现完整时钟界面 | Implementing the Full Clock UI
 
-### 3.1 新增 `OLED_ShowClock` 函数
+### 3.1 `OLED_ShowClock` —— 主显示函数
 
-在 `oled.c` 的 USER CODE 区加（如果 `software/src/oled.c` 已提供就用现成的）：
+`main.c` 在主循环里调用的主显示函数签名（固件已提供，直接用；若自己补全就照此签名实现）：
 
 ```c
-// 显示大字号时间 HH:MM:SS
-void OLED_ShowClockBig(uint8_t hour, uint8_t min, uint8_t sec) {
+// 完整时钟界面：一次性把时间/日期/温湿度/同步状态画到 OLED
+void OLED_ShowClock(uint16_t year, uint8_t month, uint8_t day,
+                    uint8_t hour, uint8_t min, uint8_t sec, uint8_t wday,
+                    float temp, float humi, uint8_t synced);
+```
+
+> **规范签名说明**：这是 `main.c` 实际调用的函数。参数全部值传入（不是传 `ClockTime*`），方便主循环里直接 `OLED_ShowClock(now.year, now.month, now.day, now.hour, now.min, now.sec, now.weekday, t, h, wifiOk);`。注意**不要**自己发明 `OLED_ShowClockBig` / `OLED_ShowClockFull` 之类的别名——以 `main.c` 调用为准。内部可拆两个辅助函数 `OLED_ShowTime(h,m,s)`（大字号时间）和 `OLED_ShowDate(y,mo,d,wday)`（日期+星期）来组织代码，但对外入口就是这个 `OLED_ShowClock`。
+
+参考实现（在 `oled.c` 的 USER CODE 区补全）：
+
+```c
+// 辅助：大字号时间 HH:MM:SS（16x32 字模）
+static void OLED_ShowTime(uint8_t h, uint8_t m, uint8_t s) {
     char buf[9];
-    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", hour, min, sec);
-    // 用 16x32 大字模逐字符显示，x 从 8 开始留边
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", h, m, s);
     for (int i = 0; i < 8; i++) {
         OLED_ShowCharBig(8 + i*16, 0, buf[i]);  // 16x32 字模函数
     }
 }
 
-// 完整时钟界面
-void OLED_ShowClockFull(const ClockTime *c, float t, float h, int wifiOk) {
+// 辅助：日期 + 星期
+static void OLED_ShowDate(uint16_t y, uint8_t mo, uint8_t d, uint8_t wday) {
+    const char *wk[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+    char line[17];
+    snprintf(line, sizeof(line), "%04d-%02d-%02d %s", y, mo, d, wk[wday]);
+    OLED_ShowString(0, 2, (uint8_t*)line, 8);
+}
+
+// 主显示入口 —— main.c 调这个
+void OLED_ShowClock(uint16_t year, uint8_t month, uint8_t day,
+                    uint8_t hour, uint8_t min, uint8_t sec, uint8_t wday,
+                    float temp, float humi, uint8_t synced) {
     char line[17];
 
-    // 第 1-2 页：大时间
-    OLED_ShowClockBig(c->hour, c->min, c->sec);
+    OLED_ShowTime(hour, min, sec);                 // 页 0-1：大时间
+    OLED_ShowDate(year, month, day, wday);         // 页 2：日期 + 星期
 
-    // 第 3 页：日期 + 星期
-    const char *wk[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
-    snprintf(line, sizeof(line), "%04d-%02d-%02d %s",
-             c->year, c->month, c->day, wk[c->weekday]);
-    OLED_ShowString(0, 3, (uint8_t*)line, 8);
+    snprintf(line, sizeof(line), "T:%.1f'C H:%.0f%%", temp, humi);
+    OLED_ShowString(0, 4, (uint8_t*)line, 16);     // 页 4-5：温湿度
 
-    // 第 4-5 页：温湿度
-    snprintf(line, sizeof(line), "T:%.1f'C H:%.0f%%", t, h);
-    OLED_ShowString(0, 4, (uint8_t*)line, 16);
-
-    // 第 7 页：状态
-    OLED_ShowString(0, 7, (uint8_t*)(wifiOk ? "WiFi OK" : "WiFi --"), 8);
+    OLED_ShowString(0, 7, (uint8_t*)(synced ? "WiFi OK" : "WiFi --"), 8); // 页 7：状态
 }
 ```
+
+> **复刻提示**: `software/src/oled.c` 可能已提供 `OLED_ShowClock` 及大字模。先 `grep OLED_ShowClock software/src/` 查一下，有就直接用、只看签名对不对；没有就照上面补全。`OLED_ShowCharBig` 依赖 16×32 字模表（见 §2.3）。
 
 ### 3.2 星期怎么来
 
@@ -145,7 +167,9 @@ while (1)
             if (KE1_I2C_SHT31(&t, &h) == HAL_OK) lastSensor = tick;
         }
 
-        OLED_ShowClockFull(&now, t, h, wifiOk);
+        OLED_ShowClock(now.year, now.month, now.day,
+                       now.hour, now.min, now.sec, now.weekday,
+                       t, h, wifiOk);
         printf("%02d:%02d:%02d T=%.1f H=%.0f\r\n",
                now.hour, now.min, now.sec, t, h);
     }
@@ -233,13 +257,10 @@ if (now.sec != lastSec) {
 
 ## 八、今日作业 | Homework
 
-1. **界面美化**: 加一个「冒号闪烁」效果——`:` 每秒亮灭一次（秒为奇数显示 `:`，偶数显示 ` `），像真电子钟。
-2. **温湿度超限提示**: 温度 >30°C 或 <10°C 时，温湿度那行反白显示（或加 `!` 标记）。
-3. **启动画面**: 上电先显示 2 秒「EnvClock / WiFi 对时中...」，对时成功后再切主界面。
-4. **回答**:
-   - 为什么主循环里不能 `OLED_Clear()`？
-   - 时间 1 秒刷、温湿度 5 秒刷、SNTP 30 分钟刷——这样设计的依据是什么？
-   - OLED 烧屏是什么，怎么避免？
+1. **界面美化** (⭐⭐): 加一个「冒号闪烁」效果——`:` 每秒亮灭一次（秒为奇数显示 `:`，偶数显示 ` `），像真电子钟。
+2. **温湿度超限提示** (⭐⭐): 温度 >30°C 或 <10°C 时，温湿度那行反白显示（或加 `!` 标记）。
+3. **启动画面** (⭐⭐⭐): 上电先显示 2 秒「EnvClock / WiFi 对时中...」，对时成功后再切主界面。
+4. **理解验证问题 | Comprehension Check**: 见下一节。
 5. **Git 提交**:
    ```bash
    git add curriculum/day-07.md
@@ -248,7 +269,34 @@ if (now.sec != lastSec) {
 
 ---
 
-## 九、明日预告 | Tomorrow
+## 九、理解验证问题 | Comprehension Check
+
+> 答题前先回顾本文 §2.1（信息优先级）、§3.4（刷新策略 WHY）、§四（防闪屏 WHY）、§常见错误。建议口述给同伴听一遍再写答案。
+
+**Q1（设计权衡题）** 这个桌面时钟为什么让时间用最大字号、温湿度退到角落小字，而不是四类信息一样大？从「用户 0.5 秒抓信息」和「主功能 vs 附加价值」两个角度分析。
+
+> **参考答案**: 桌面摆件的核心使用场景是「抬头瞄一眼」，0.5 秒内必须抓到最关键信息。这个产品的卖点是「网络时钟」，时间是主功能，温湿度是附加价值。若四类信息一样大，视觉没有焦点，用户反而抓不住重点——真实产品设计都是「主功能占视觉中心，辅助功能退到角落」（Apple Watch、小米台灯时钟同此逻辑）。信息层级 = 用字号对比把优先级「画」出来。
+
+**Q2（原理追问题）** 时间每秒刷、温湿度 5 秒刷、SNTP 30 分钟刷——为什么不用同一个频率（比如全部每秒刷）？列出至少 3 条理由。
+
+> **参考答案**: ①省 I2C 总线——SHT31 频繁读取影响寿命和总线稳定性；②省 CPU——温湿度秒级刷新无意义且占用主循环；③温湿度秒级变化无意义——人体感知不到 0.1°C 变化，刷了也是抖动数字；④减少 OLED 写入次数延长寿命——OLED 长期同一静态画面会烧屏（burn-in）。时间必须 1 秒刷是因为秒数每秒都要变才像时钟；SNTP 是网络重操作，30 分钟校正一次本地 tick 足够（本地 tick 30 分钟漂移 <2 秒）。「不同数据不同刷新率」是真实系统的标配。
+
+**Q3（故障分析题）** 你的 OLED 每秒「黑一下再亮」明显闪屏，按可能性排序列出原因和对应修法。
+
+> **参考答案**: 最可能→最不可能：①主循环里每秒调了 `OLED_Clear()` 整屏清写（几十毫秒像素灭再亮）→**删掉 Clear，改局部刷新只刷变化的行**；②整屏重绘而非局部刷新→用 `lastSec`/`lastMin` 记录上次值，只重画变化的区域；③刷新值位数变化导致旧字符残留（如 9→0）→刷新前写空格覆盖或保证位数一致；④I2C/SPI 时序太慢→降字号或换硬件 I2C。`OLED_Clear()` 是闪屏头号嫌疑，复刻时绝不在主循环里调。
+
+### 今日评分标准 | Rubric
+
+| 维度 | 满分 | 评分细则 |
+|------|------|---------|
+| 完成度 | 4 | 大时间+日期+温湿度+WiFi 状态四项全显示且每秒不闪屏得 4；缺一项或闪屏扣 1-2 |
+| 理解深度（CC 回答） | 3 | Q1-Q3 能讲清「为什么」得 3；只讲是什么得 1-2 |
+| 代码/接线质量 | 2 | 局部刷新实现正确、坐标无重叠得 2；整屏 Clear 或页号冲突扣 1-2 |
+| 创意拓展 | 1 | 冒号闪烁/超限提示/启动画面任一完成得 1 |
+
+---
+
+## 十、明日预告 | Tomorrow
 
 **Day 8: 完善 —— 蜂鸣器整点报时 / 按键调时 / 断网回退**
 - 加蜂鸣器用 PWM 实现整点报时（滴答声）
@@ -256,6 +304,10 @@ if (now.sec != lastSec) {
 - 实现断网回退：WiFi 断了用本地 tick 继续走，恢复后自动重对时
 
 **前置准备**: 找无源蜂鸣器 + 1 个轻触按键 + 杜邦线。
+
+---
+
+> **今日产出 = 明日输入**: 今天完成的完整时钟界面（`OLED_ShowClock` + 局部刷新）是 Day 8 的基线——Day 8 要在这个主循环上加蜂鸣器报时、按键调时、断网回退，前提是今天的界面已稳定不闪屏。
 
 ---
 

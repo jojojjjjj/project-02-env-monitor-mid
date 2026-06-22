@@ -3,7 +3,7 @@
   * @file    esp8266.h
   * @brief   ESP8266 WiFi + SNTP over UART AT 命令 头文件
   *
-  *   设计思路 (笨鸟先飞 — 讲 WHY):
+  *   设计思路 (循序渐进 — 讲 WHY):
   *   - STM32L433 本身没有 WiFi, 我们用一片 ESP-01S (ESP8266) 当“WiFi 协处理器”:
   *     STM32 通过 UART (串口) 给 ESP8266 发 AT 文本命令, ESP8266 帮我们连 WiFi、
   *     向 NTP 服务器对时间, 再把结果用文本回传给 STM32。

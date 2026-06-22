@@ -12,7 +12,7 @@
   * 复刻自 Bilibili 视频 BV1tb4y1U7Du (UP主: 乐在程上) 的温湿度网络时钟。
   * 硬件: STM32L433 (KE1 板) + ESP8266 (WiFi/SNTP) + SHT31 (温湿度) + SSD1306 OLED。
   *
-  * 主流程 (笨鸟先飞 — 讲 WHY):
+  * 主流程 (循序渐进 — 讲 WHY):
   *   1. 上电初始化: HAL/时钟/GPIO/I2C/UART/TIM → SHT31 → OLED 欢迎屏 → ESP8266
   *   2. 连 WiFi (AT+CWJAP) → 配 SNTP (AT+CIPSNTPCFG) → 拿网络时间 (AT+CIPSNTPTIME)
   *   3. 主循环:

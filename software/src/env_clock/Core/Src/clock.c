@@ -3,7 +3,7 @@
   * @file    clock.c
   * @brief   时钟管理 (Clock management) 实现
   *
-  *   设计思路 (笨鸟先飞 — 讲 WHY):
+  *   设计思路 (循序渐进 — 讲 WHY):
   *   - STM32 内部没有电池供电的实时时钟 (我们没接 LSE 电池), 所以每次上电时间
   *     都是未知的。必须靠 ESP8266 联网向 NTP 服务器“对一次时”, 之后 STM32 用
   *     自己的 SysTick (1ms 中断) 自己往前走, 这个叫“守时 (holdover)”。

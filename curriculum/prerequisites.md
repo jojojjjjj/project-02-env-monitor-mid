@@ -5,6 +5,23 @@
 
 本项目采用**复刻模式**，源码由课程提供，因此对编程基础的要求很低——**能读懂基础 C 语法即可**，无需任何 STM32 经验。真正需要你准备好的是**工具链**和**硬件套件**。
 
+> **English summary**: This project uses a replication model — firmware is provided, so you only need basic C reading skills and a prepared toolchain + hardware kit. No prior STM32 experience required.
+
+---
+
+## 学习成果 | Learning Outcomes
+
+完成本前置准备后，你应当能够：
+
+- **识别 (Identify)** 本项目所需的全部软件工具链组件（CubeIDE / 串口驱动 / 串口终端 / esptool）及其各自用途
+- **解释 (Explain)** 为什么 ESP8266 只支持 2.4GHz、为什么 CubeIDE 不支持中文路径
+- **实现 (Implement)** 在自己的电脑上把工具链装好并验证通过（出现 COM 口、能新建工程）
+- **分析 (Analyze)** 自己的环境是否满足项目要求，找出缺哪一块、该装什么
+
+## 为什么学这个 | Why This Matters
+
+> 类比：**装厨房比炒第一道菜更费劲，但没厨房就没法开火。** 工具链就是你的厨房——CubeIDE 是灶台，串口驱动是燃气接口，串口终端是看火候的窗口。Day 1 之前把厨房装好，课堂上才能直接「炒菜」（接线、烧录、调试），而不是全班卡在「老师我板子不识别」上。历年暑期课统计，**60% 的卡壳发生在工具链安装环节**，把它前置到课前是性价比最高的事。
+
 ---
 
 ## ✅ 前置清单 | Prerequisite Checklist
@@ -96,27 +113,33 @@ pip install pyserial
 
 按顺序安装，每步装完都验证一下：
 
-1. **装 CubeIDE**
-   - 下载 ST 账号登录后下载安装包，按默认选项安装。
-   - 验证：启动 CubeIDE，能新建工程即成功。
+### 任务 1: 装 CubeIDE (难度: ⭐)
 
-2. **装串口驱动**
-   - 插上 STM32 板子，装 CH340 或 CP210x 驱动。
-   - 验证：设备管理器出现 `COMx`。
+1. 下载 ST 账号登录后下载安装包，按默认选项安装。
+2. 验证：启动 CubeIDE，能新建工程即成功。
 
-3. **装串口终端**
-   - 装 MobaXterm 或 PuTTY。
-   - 验证：能打开串口（波特率 115200）连上板子。
+### 任务 2: 装串口驱动 (难度: ⭐)
 
-4. **（可选）装 esptool + pyserial**
-   ```bash
-   pip install esptool pyserial
-   ```
-   - 验证：`esptool.py version` 能打印版本号。
+1. 插上 STM32 板子，装 CH340 或 CP210x 驱动。
+2. 验证：设备管理器出现 `COMx`。
 
-5. **解压课程源码到英文路径**
-   - 把 `software/src/` 工程解压到如 `D:\projects\env-clock\`（**不要有中文**）。
-   - 用 CubeIDE `File → Open Projects from File System` 导入。
+### 任务 3: 装串口终端 (难度: ⭐)
+
+1. 装 MobaXterm 或 PuTTY。
+2. 验证：能打开串口（波特率 115200）连上板子。
+
+### 任务 4: （可选）装 esptool + pyserial (难度: ⭐)
+
+```bash
+pip install esptool pyserial
+```
+- 验证：`esptool.py version` 能打印版本号。
+
+### 任务 5: 解压课程源码到英文路径 (难度: ⭐⭐)
+
+1. 把 `software/src/` 工程解压到如 `D:\projects\env-clock\`（**不要有中文**）。
+2. 用 CubeIDE `File → Open Projects from File System` 导入。
+3. 验证：工程树出现 `env_clock`，`Core/Inc/wifi_config.h` 等文件可见。
 
 ---
 
@@ -129,15 +152,50 @@ pip install pyserial
 - [ ] 我能看懂下面这段 C 代码大概在干什么（不用会写）：
   ```c
   while (1) {
-      KE1_I2C_SHT31(&temp, &humi);   // 读温湿度
-      OLED_ShowT_H(temp, humi);       // 显示
-      HAL_Delay(1000);                // 等 1 秒
+      KE1_I2C_SHT31(&temp, &humi);        // 读温湿度
+      OLED_ShowClock(y, mo, d, h, mi, s,  // 刷一屏：日期+时间
+                     wday, temp, humi,    // +温湿度+同步状态
+                     Clock_IsSynced());
+      HAL_Delay(200);                      // 主循环节流
   }
   ```
 - [ ] 我装好了 CubeIDE，能新建工程
 - [ ] 我插上板子，设备管理器出现了 COM 号
 
 全部打勾？去 [day-01.md](day-01.md) 开始吧。
+
+---
+
+## 理解验证问题 | Comprehension Check
+
+> 以下是理解类问题（不是纯识记）。先自己想，再对参考答案。能答对 2/3 即说明前置准备到位。
+
+**Q1: ESP8266 (ESP-01S) 为什么只支持 2.4GHz WiFi 而不支持 5GHz？如果你家路由器是「双频合一」的，该怎么办？**
+
+> **参考答案**: ESP8266 是一款早期 WiFi 芯片，其射频硬件只设计了 2.4GHz 频段，物理上就不支持 5GHz。5GHz 频段需要不同的射频前端和天线设计，ESP8266 没有这部分电路。双频合一的路由器会在 2.4/5GHz 间自动引导设备，部分路由器会把 ESP8266 误引到 5GHz 导致连不上。对策：在路由器设置里**临时关闭 5GHz**、或**分开命名**两个 SSID（如 `MyWiFi` 和 `MyWiFi_5G`），让 ESP8266 连 2.4GHz 那个；或用手机开热点（手机热点默认 2.4GHz）。
+
+**Q2: 为什么 STM32CubeIDE 不支持中文路径？这反映了嵌入式工具链的什么共性？**
+
+> **参考答案**: CubeIDE 底层调用 GCC arm 交叉编译器 + make + Python 脚本，这些工具大多源自 Linux/Unix 传统，对路径中的非 ASCII 字符（中文、空格）处理不一致，容易在编译/链接时找不到文件而报错。这反映了嵌入式工具链的共性——**沿袭 Unix 传统、对路径编码敏感**。对策：工程一律放全英文、无空格路径（如 `D:\projects\env-clock\`）。这也是为什么 UP 主 `使用说明.txt` 特别提醒。
+
+**Q3: 为什么「充电线」会导致烧录/串口失败？如何判断一根 USB 线是数据线？**
+
+> **参考答案**: USB 线内部有 4 芯：2 根电源（VBUS/GND）+ 2 根数据（D+/D-）。廉价「充电线」为省成本只焊了电源 2 芯，没有数据线，所以能充电但电脑识别不到设备、无法烧录/串口通信。判断方法：**用这根线连手机能传文件 = 数据线**；或看线缆包装标 `USB 2.0 Data`。买线时明确选「数据线」而非「快充线」。
+
+---
+
+## 评分标准 | Rubric
+
+| 维度 | 满分 | 评分细则 |
+|------|------|---------|
+| 完成度 | 4 | 5 项安装任务全部完成且验证通过（COM 口出现 + 能新建工程 + 源码导入成功） |
+| 理解深度 (CC 回答) | 3 | 能答对 Q1-Q3 中至少 2 个，并说出理由而非只背结论 |
+| 环境质量 | 2 | 路径全英文无空格；驱动无感叹号；串口能稳定打开 |
+| 创意拓展 | 1 | 额外装了 VS Code + PlatformIO 等进阶环境，或写了安装笔记 |
+
+---
+
+> **今日产出 = 明日输入**: 装好的工具链（CubeIDE 能编译 + COM 口出现 + 源码导入 0 error） = Day 1 烧录第一个固件、点亮 OLED 的输入。工具链没装好，Day 1 寸步难行。
 
 ---
 
