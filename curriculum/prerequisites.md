@@ -1,5 +1,7 @@
 # 前置知识清单 | Prerequisites Checklist
 
+<!-- 注：价格信息已注释隐藏（查价不准确，仅作参考不严谨）/ Note: price info commented out (inaccurate, not rigorous as reference) -->
+
 > 在开始本项目之前，请确认以下前置条件已满足。
 > Before starting, please confirm the following prerequisites are met.
 
@@ -31,7 +33,7 @@
 | C 语法阅读能力 | 能看懂变量、函数、`while(1)`、`if`、`#define` | **不用会写**，能读懂即可，方便调试时改配置 |
 | STM32 经验 | **无需** | 本课程从零教 CubeIDE 工具链 |
 | 电脑 | 一台带 USB 口的 Windows / Mac / Linux | Windows 最省心（驱动齐全）|
-| 硬件套件 | 见 [hardware/BOM.md](../hardware/BOM.md) | 总成本 < ¥500 |
+| 硬件套件 | 见 [hardware/BOM.md](../hardware/BOM.md) | 总成本 < <!-- ¥500 --> |
 | 工具链软件 | 见下方「工具链」 | 全部免费 |
 | WiFi | 一台可联网的 2.4GHz WiFi 路由器 + 账号密码 | ESP8266 仅支持 2.4GHz，不支持 5GHz |
 
@@ -105,7 +107,7 @@ pip install pyserial
 - 面包板 + 杜邦线（MVP 版）/ 自制 PCB（进阶版）
 - USB 数据线
 
-> 总成本 < ¥500/套。面包板 MVP 版通常 ¥150–250 即可搞定。
+> 总成本 < <!-- ¥500/套 -->。面包板 MVP 版通常 <!-- ¥150–250 --> 即可搞定。
 
 ---
 

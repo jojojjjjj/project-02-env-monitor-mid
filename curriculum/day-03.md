@@ -237,7 +237,7 @@ T=25.41'C H=58.18%
 1. **I2C 扫描器**: 怀疑地址不对？写个循环 `for(addr=1; addr<128; addr++)` 用 `HAL_I2C_IsDeviceReady(&hi2c2, addr<<1, 3, 100)` 扫，能应答的地址就是接上的设备。SHT31 应该在 `0x44`。
 2. **先读寄存器再读数据**: 串口打印 `read_buff[0..5]` 的原始 hex，对照「T高T低CRC H高H低CRC」看，数据合理再信公式。
 3. **I2C 卡死怎么办**: STM32 的 I2C 有「总线锁死」老毛病——如果上次通信中途复位，从机可能一直拉低 SDA。解决：上电时把 SCL 手动 toggle 9-16 次（用 GPIO 模拟）释放总线。HAL 没现成函数，参考 `hardware/troubleshooting.md`。
-4. **示波器/逻辑分析仪**: ¥30 的 USB 逻辑分析仪 + PulseView 软件，能直接抓 I2C 波形看 START/ACK/数据，I2C 调试终极武器。
+4. **示波器/逻辑分析仪**: <!-- ¥30 --> 的 USB 逻辑分析仪 + PulseView 软件，能直接抓 I2C 波形看 START/ACK/数据，I2C 调试终极武器。
 5. **用 `HAL_I2C_Master_Transmit` 的返回值**: 它返回 `HAL_OK/HAL_ERROR/HAL_BUSY/HAL_TIMEOUT`。每次都检查返回值并 `printf` 出来，比啥都不查强一百倍。
 
 ---
